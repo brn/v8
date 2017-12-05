@@ -34,6 +34,19 @@ class ObjectBuiltinsAssembler : public CodeStubAssembler {
   Node* ConstructDataDescriptor(Node* context, Node* value, Node* writable,
                                 Node* enumerable, Node* configurable);
   Node* GetAccessorOrUndefined(Node* accessor, Label* if_bailout);
+
+  void GetOwnValuesOrEntries(Node* context, Node* object, bool get_entries);
+
+  void OnlyHasSimpleProperties(Node* map, Label* if_slow);
+
+  void FastGetOwnValuesOrEntries(Node* context, Node* object,
+                                 Variable* var_values_or_entries,
+                                 Label* if_fast, Label* if_slow,
+                                 Label* if_empty_array, bool get_entries);
+
+  Node* FinalyzeKeysOrValuesJSArray(Node* context, Node* values_or_entries,
+                                    Node* initial_size, Node* size,
+                                    Node* array_map, Label* if_empty);
 };
 
 void ObjectBuiltinsAssembler::ReturnToStringFormat(Node* context,
@@ -95,6 +108,320 @@ Node* ObjectBuiltinsAssembler::ConstructDataDescriptor(Node* context,
                                  SelectBooleanConstant(configurable));
 
   return js_desc;
+}
+
+void ObjectBuiltinsAssembler::GetOwnValuesOrEntries(Node* context, Node* object,
+                                                    bool get_entries) {
+  object = CallBuiltin(Builtins::kToObject, context, object);
+
+  VARIABLE(var_values_or_entries, MachineRepresentation::kTagged);
+  Label if_fast(this, Label::kDeferred), if_slow(this),
+      if_empty_array(this, Label::kDeferred);
+  Node* native_context = LoadNativeContext(context);
+  Node* array_map = LoadJSArrayElementsMap(PACKED_ELEMENTS, native_context);
+
+  FastGetOwnValuesOrEntries(context, object, &var_values_or_entries, &if_fast,
+                            &if_slow, &if_empty_array, get_entries);
+
+  BIND(&if_fast);
+  Return(var_values_or_entries.value());
+
+  BIND(&if_slow);
+  {
+    Node* keys = CallRuntime(Runtime::kGetOwnPropertyKeys, context, object,
+                             SmiConstant(SKIP_SYMBOLS));
+    CSA_ASSERT(this, IsJSArray(keys));
+    Node* key_elements = LoadObjectField(keys, JSArray::kElementsOffset);
+    Node* initial_size = LoadAndUntagObjectField(keys, JSArray::kLengthOffset);
+    CSA_ASSERT(this, IntPtrGreaterThanOrEqual(initial_size, IntPtrConstant(0)));
+    Node* values_or_entries = AllocateFixedArray(PACKED_ELEMENTS, initial_size);
+
+    // The keys array include unenumerable property keys
+    // and we should exclude it from the array.
+    // But if do so, the array has extra capacity and illegal area.
+    // So we fill the array with the-hole.
+    FillFixedArrayWithValue(PACKED_ELEMENTS, values_or_entries,
+                            IntPtrConstant(0), initial_size,
+                            Heap::kTheHoleValueRootIndex);
+
+    VARIABLE(var_index, MachineType::PointerRepresentation(),
+             IntPtrConstant(0));
+    VARIABLE(var_property_count, MachineType::PointerRepresentation(),
+             IntPtrConstant(0));
+    Variable* vars[] = {&var_index, &var_property_count};
+    Label loop(this, 2, vars), after_loop(this), loop_exit(this),
+        loop_condition(this);
+
+    // We dont use BuildFastLoop.
+    // Instead, we use hand-written loop
+    // because of we need to use 'continue' functionality.
+    Branch(IntPtrEqual(var_index.value(), initial_size), &after_loop, &loop);
+    BIND(&loop);
+    {
+      Node* next_key = LoadFixedArrayElement(key_elements, var_index.value());
+      Node* desc = CallRuntime(Runtime::kGetOwnPropertyDescriptor, context,
+                               object, next_key);
+      GotoIf(IsNullOrUndefined(desc), &loop_condition);
+      Node* flags = LoadAndUntagToWord32ObjectField(
+          desc, PropertyDescriptorObject::kFlagsOffset);
+      Node* has_enumerable =
+          IsSetWord32<PropertyDescriptorObject::HasEnumerableBit>(flags);
+      Node* is_enumerable =
+          IsSetWord32<PropertyDescriptorObject::IsEnumerableBit>(flags);
+      Node* is_not_enumerable =
+          Word32And(has_enumerable, Word32Not(is_enumerable));
+      GotoIf(is_not_enumerable, &loop_condition);
+
+      Node* value =
+          CallRuntime(Runtime::kGetProperty, context, object, next_key);
+
+      if (get_entries) {
+        Node* array = nullptr;
+        Node* elements = nullptr;
+        std::tie(array, elements) = AllocateUninitializedJSArrayWithElements(
+            PACKED_ELEMENTS, array_map, SmiConstant(2), nullptr,
+            IntPtrConstant(2));
+        StoreFixedArrayElement(elements, 0, next_key);
+        StoreFixedArrayElement(elements, 1, value);
+        value = array;
+      }
+
+      StoreFixedArrayElement(values_or_entries, var_property_count.value(),
+                             value);
+      Increment(&var_property_count, 1, INTPTR_PARAMETERS);
+      Goto(&loop_condition);
+
+      BIND(&loop_condition);
+      {
+        Increment(&var_index, 1, INTPTR_PARAMETERS);
+        Branch(IntPtrEqual(var_index.value(), initial_size), &after_loop,
+               &loop);
+      }
+    }
+    BIND(&after_loop);
+    {
+      Label if_enumerables_exists(this);
+      Branch(WordEqual(var_property_count.value(), IntPtrConstant(0)),
+             &if_empty_array, &if_enumerables_exists);
+
+      BIND(&if_enumerables_exists);
+      {
+        Node* array = FinalyzeKeysOrValuesJSArray(
+            context, values_or_entries, initial_size,
+            var_property_count.value(), array_map, &if_empty_array);
+        Return(array);
+      }
+    }
+  }
+
+  BIND(&if_empty_array);
+  {
+    Node* empty_array =
+        AllocateJSArray(PACKED_ELEMENTS, array_map, SmiConstant(0),
+                        SmiConstant(0), nullptr, SMI_PARAMETERS);
+    Return(empty_array);
+  }
+}
+
+void ObjectBuiltinsAssembler::OnlyHasSimpleProperties(Node* map,
+                                                      Label* if_slow) {
+  Node* instance_type = LoadMapInstanceType(map);
+  Node* is_string_wrapper_elements_kind = IsStringWrapperElementsKind(map);
+  Node* is_special_receiver_instance_type =
+      IsSpecialReceiverInstanceType(instance_type);
+  Node* has_hidden_prototype = HasHiddenPrototype(map);
+  Node* is_dictionary_map = IsDictionaryMap(map);
+
+  GotoIf(is_string_wrapper_elements_kind, if_slow);
+  GotoIf(is_special_receiver_instance_type, if_slow);
+  GotoIf(has_hidden_prototype, if_slow);
+  GotoIf(is_dictionary_map, if_slow);
+}
+
+void ObjectBuiltinsAssembler::FastGetOwnValuesOrEntries(
+    Node* context, Node* object, Variable* var_values_or_entries,
+    Label* if_fast, Label* if_slow, Label* if_empty_array, bool get_entries) {
+  Node* map = LoadMap(object);
+  GotoIfNot(IsJSObjectMap(map), if_slow);
+  OnlyHasSimpleProperties(map, if_slow);
+
+  Node* native_context = LoadNativeContext(context);
+  Node* array_map = LoadJSArrayElementsMap(PACKED_ELEMENTS, native_context);
+  Node* bit_field3 = LoadMapBitField3(map);
+  Node* elements = LoadElements(object);
+  Node* object_descriptors = LoadMapDescriptors(map);
+  Node* number_of_own_descriptors =
+      DecodeWord32<Map::NumberOfOwnDescriptorsBits>(bit_field3);
+  Node* number_of_own_elements =
+      CallRuntime(Runtime::kGetObjectElementsCount, context, object);
+
+  VARIABLE(var_property_count, MachineType::PointerRepresentation(),
+           IntPtrConstant(0));
+  Label if_elements(this), if_properties(this), done(this);
+
+  Node* initial_size =
+      IntPtrAdd(number_of_own_descriptors, SmiUntag(number_of_own_elements));
+  GotoIf(WordEqual(initial_size, IntPtrConstant(0)), if_empty_array);
+
+  Node* values_or_entries =
+      AllocateFixedArray(PACKED_ELEMENTS, initial_size, INTPTR_PARAMETERS);
+
+  // If object has elements that type is a Dictionary,
+  // we can't get a precise element count (always too big capacity).
+  // So we fill invalid zone with the-hole.
+  FillFixedArrayWithValue(PACKED_ELEMENTS, values_or_entries, IntPtrConstant(0),
+                          initial_size, Heap::kTheHoleValueRootIndex);
+
+  // We dont use BuildFastLoop.
+  // Instead, we use hand-written loop
+  // because of we need to use 'continue' functionality.
+  Branch(WordEqual(elements, LoadRoot(Heap::kEmptyFixedArrayRootIndex)),
+         &if_properties, &if_elements);
+
+  BIND(&if_elements);
+  {
+    Node* result_array = nullptr;
+    if (get_entries) {
+      result_array = CallRuntime(Runtime::kCollectObjectEntries, context,
+                                 object, values_or_entries);
+    } else {
+      result_array = CallRuntime(Runtime::kCollectObjectValues, context, object,
+                                 values_or_entries);
+    }
+    CSA_ASSERT(this, IsJSArray(result_array));
+    Node* result_vector =
+        LoadObjectField(result_array, JSArray::kElementsOffset);
+    Node* result = LoadFixedArrayElement(result_vector, 0);
+    Node* count = SmiUntag(LoadFixedArrayElement(result_vector, 1));
+    var_property_count.Bind(count);
+    BranchIfToBooleanIsTrue(result, &if_properties, if_empty_array);
+  }
+
+  BIND(&if_properties);
+  {
+    VARIABLE(var_index, MachineType::PointerRepresentation(),
+             IntPtrConstant(0));
+    VARIABLE(var_property_value, MachineRepresentation::kTagged,
+             UndefinedConstant());
+    Variable* vars[] = {&var_index, &var_property_count, &var_property_value};
+    Label loop(this, 3, vars), after_loop(this), loop_condition(this);
+    Branch(IntPtrEqual(var_index.value(), number_of_own_descriptors),
+           &after_loop, &loop);
+    BIND(&loop);
+    {
+      // Map must be loaded each loop header to get newest map object.
+      map = LoadMap(object);
+      object_descriptors = LoadMapDescriptors(map);
+
+      Node* next_key =
+          DescriptorArrayGetKey(object_descriptors, var_index.value());
+      Node* key_map = LoadMap(next_key);
+      Node* key_instance_type = LoadMapInstanceType(key_map);
+
+      // Skip Symbols.
+      GotoIf(WordEqual(key_instance_type, IntPtrConstant(SYMBOL_TYPE)),
+             &loop_condition);
+
+      {
+        Node* instance_type = LoadMapInstanceType(map);
+        VARIABLE(var_details, MachineRepresentation::kWord32);
+        VARIABLE(var_raw_value, MachineRepresentation::kTagged);
+        Label if_found(this), if_not_found(this), if_bailout(this),
+            make_pair(this);
+
+        TryGetOwnProperty(context, object, object, map, instance_type, next_key,
+                          &if_found, &var_property_value, &var_details,
+                          &var_raw_value, &if_not_found, &if_bailout,
+                          kCallJSGetter);
+
+        BIND(&if_not_found);
+        {
+          var_property_value.Bind(UndefinedConstant());
+          Goto(&loop_condition);
+        }
+
+        BIND(&if_bailout);
+        {
+          var_property_value.Bind(UndefinedConstant());
+          Goto(&make_pair);
+        }
+
+        BIND(&if_found);
+        {
+          Node* details = var_details.value();
+          Node* attributes =
+              DecodeWord32<PropertyDetails::AttributesField>(details);
+          Node* dont_enum = Int32Constant(PropertyAttributes::DONT_ENUM);
+          GotoIf(WordNotEqual(WordAnd(attributes, dont_enum), SmiConstant(0)),
+                 &loop_condition);
+          Goto(&make_pair);
+        }
+
+        BIND(&make_pair);
+        {
+          if (get_entries) {
+            Node* array = nullptr;
+            Node* elements = nullptr;
+            std::tie(array, elements) =
+                AllocateUninitializedJSArrayWithElements(
+                    PACKED_ELEMENTS, array_map, SmiConstant(2), nullptr,
+                    IntPtrConstant(2));
+            StoreFixedArrayElement(elements, 0, next_key, SKIP_WRITE_BARRIER);
+            StoreFixedArrayElement(elements, 1, var_property_value.value(),
+                                   SKIP_WRITE_BARRIER);
+            var_property_value.Bind(array);
+          }
+          StoreFixedArrayElement(values_or_entries, var_property_count.value(),
+                                 var_property_value.value());
+          Increment(&var_property_count, 1, INTPTR_PARAMETERS);
+          Goto(&loop_condition);
+        }
+      }
+
+      BIND(&loop_condition);
+      {
+        Increment(&var_index, 1, INTPTR_PARAMETERS);
+        Branch(IntPtrEqual(var_index.value(), number_of_own_descriptors),
+               &after_loop, &loop);
+      }
+    }
+    BIND(&after_loop);
+    Goto(&done);
+  }
+
+  BIND(&done);
+  {
+    Node* array = FinalyzeKeysOrValuesJSArray(
+        context, values_or_entries, initial_size, var_property_count.value(),
+        array_map, if_empty_array);
+    var_values_or_entries->Bind(array);
+    Goto(if_fast);
+  }
+}
+
+Node* ObjectBuiltinsAssembler::FinalyzeKeysOrValuesJSArray(
+    Node* context, Node* result, Node* initial_size, Node* size,
+    Node* array_map, Label* if_empty) {
+  CSA_ASSERT(this, IsFixedArray(result));
+  CSA_ASSERT(this, IsJSArrayMap(array_map));
+
+  GotoIf(WordEqual(size, IntPtrConstant(0)), if_empty);
+  CSA_ASSERT(this, IntPtrGreaterThanOrEqual(initial_size, size));
+  Node* array_length = SmiTag(size);
+  Node* array = AllocateUninitializedJSArrayWithoutElements(
+      array_map, array_length, nullptr);
+  Label if_should_shrink(this), done(this);
+  Branch(WordNotEqual(initial_size, size), &if_should_shrink, &done);
+
+  BIND(&if_should_shrink);
+  CallRuntime(Runtime::kShrinkFixedArray, context, result, array_length);
+  Goto(&done);
+
+  BIND(&done);
+  StoreObjectField(array, JSArray::kElementsOffset, result);
+  CSA_ASSERT(this, SmiEqual(LoadObjectField(result, FixedArray::kLengthOffset),
+                            array_length));
+  return array;
 }
 
 TF_BUILTIN(ObjectPrototypeToLocaleString, CodeStubAssembler) {
@@ -266,6 +593,18 @@ TF_BUILTIN(ObjectKeys, ObjectBuiltinsAssembler) {
                                    var_elements.value());
     Return(array);
   }
+}
+
+TF_BUILTIN(ObjectValues, ObjectBuiltinsAssembler) {
+  Node* object = Parameter(Descriptor::kObject);
+  Node* context = Parameter(Descriptor::kContext);
+  GetOwnValuesOrEntries(context, object, false);
+}
+
+TF_BUILTIN(ObjectEntries, ObjectBuiltinsAssembler) {
+  Node* object = Parameter(Descriptor::kObject);
+  Node* context = Parameter(Descriptor::kContext);
+  GetOwnValuesOrEntries(context, object, true);
 }
 
 // ES #sec-object.prototype.isprototypeof

@@ -312,6 +312,7 @@ namespace internal {
   F(ReThrow, 1, 1)                                                   \
   F(RunMicrotasks, 0, 1)                                             \
   F(StackGuard, 0, 1)                                                \
+  F(ShrinkFixedArray, 2, 1)                                          \
   F(Throw, 1, 1)                                                     \
   F(ThrowApplyNonFunction, 1, 1)                                     \
   F(ThrowCannotConvertToPrimitive, 0, 1)                             \
@@ -392,6 +393,9 @@ namespace internal {
   F(ObjectCreate, 2, 1)                                         \
   F(InternalSetPrototype, 2, 1)                                 \
   F(OptimizeObjectForAddingMultipleProperties, 2, 1)            \
+  F(GetObjectElementsCount, 1, 1)                               \
+  F(CollectObjectEntries, 2, 1)                                 \
+  F(CollectObjectValues, 2, 1)                                  \
   F(GetProperty, 2, 1)                                          \
   F(KeyedGetProperty, 2, 1)                                     \
   F(AddNamedProperty, 4, 1)                                     \

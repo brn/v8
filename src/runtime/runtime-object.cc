@@ -7,6 +7,7 @@
 #include "src/arguments.h"
 #include "src/bootstrapper.h"
 #include "src/debug/debug.h"
+#include "src/elements.h"
 #include "src/isolate-inl.h"
 #include "src/messages.h"
 #include "src/objects/property-descriptor-object.h"
@@ -124,6 +125,25 @@ static MaybeHandle<Object> KeyedGetObjectProperty(Isolate* isolate,
 
   // Fall back to GetObjectProperty.
   return Runtime::GetObjectProperty(isolate, receiver_obj, key_obj);
+}
+
+Handle<FixedArray> GetObjectValuesOrEntries(Isolate* isolate,
+                                            Handle<JSObject> object,
+                                            Handle<FixedArray> entries,
+                                            bool get_entries) {
+  Handle<FixedArray> result_array = isolate->factory()->NewFixedArray(2);
+  int count = 0;
+  auto result = object->GetElementsAccessor()->CollectValuesOrEntries(
+      isolate, object, entries, get_entries, &count, ENUMERABLE_STRINGS);
+
+  if (result.IsNothing()) {
+    result_array->set(0, isolate->heap()->ToBoolean(false));
+  } else {
+    result_array->set(0, isolate->heap()->ToBoolean(true));
+  }
+  result_array->set(1, *isolate->factory()->NewNumber(count));
+
+  return result_array;
 }
 
 namespace {
@@ -965,6 +985,35 @@ RUNTIME_FUNCTION(Runtime_CopyDataPropertiesWithExcludedProperties) {
                                                    &excluded_properties, false),
                isolate->heap()->exception());
   return *target;
+}
+
+RUNTIME_FUNCTION(Runtime_CollectObjectEntries) {
+  HandleScope scope(isolate);
+  DCHECK_LE(2, args.length());
+  CONVERT_ARG_HANDLE_CHECKED(JSObject, object, 0);
+  CONVERT_ARG_HANDLE_CHECKED(FixedArray, values_or_entries, 1);
+  auto ret = GetObjectValuesOrEntries(isolate, object, values_or_entries, true);
+  return *isolate->factory()->NewJSArrayWithElements(ret);
+}
+
+RUNTIME_FUNCTION(Runtime_CollectObjectValues) {
+  HandleScope scope(isolate);
+  DCHECK_LE(2, args.length());
+  CONVERT_ARG_HANDLE_CHECKED(JSObject, object, 0);
+  CONVERT_ARG_HANDLE_CHECKED(FixedArray, values_or_entries, 1);
+  auto ret =
+      GetObjectValuesOrEntries(isolate, object, values_or_entries, false);
+  return *isolate->factory()->NewJSArrayWithElements(ret);
+}
+
+RUNTIME_FUNCTION(Runtime_GetObjectElementsCount) {
+  HandleScope scope(isolate);
+  DCHECK_LE(1, args.length());
+  CONVERT_ARG_HANDLE_CHECKED(JSObject, object, 0);
+
+  int count =
+      object->GetElementsAccessor()->GetCapacity(*object, object->elements());
+  return *isolate->factory()->NewNumber(count);
 }
 
 namespace {
