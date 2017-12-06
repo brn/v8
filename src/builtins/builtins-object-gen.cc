@@ -44,9 +44,9 @@ class ObjectBuiltinsAssembler : public CodeStubAssembler {
                                  Label* if_fast, Label* if_slow,
                                  Label* if_empty_array, bool get_entries);
 
-  Node* FinalyzeKeysOrValuesJSArray(Node* context, Node* values_or_entries,
-                                    Node* initial_size, Node* size,
-                                    Node* array_map, Label* if_empty);
+  Node* FinalyzeEntriesOrValuesJSArray(Node* context, Node* values_or_entries,
+                                       Node* initial_size, Node* size,
+                                       Node* array_map, Label* if_empty);
 };
 
 void ObjectBuiltinsAssembler::ReturnToStringFormat(Node* context,
@@ -136,7 +136,7 @@ void ObjectBuiltinsAssembler::GetOwnValuesOrEntries(Node* context, Node* object,
     CSA_ASSERT(this, IntPtrGreaterThanOrEqual(initial_size, IntPtrConstant(0)));
     Node* values_or_entries = AllocateFixedArray(PACKED_ELEMENTS, initial_size);
 
-    // The keys array include unenumerable property keys
+    // The keys array includes unenumerable property keys
     // and we should exclude it from the array.
     // But if do so, the array has extra capacity and illegal area.
     // So we fill the array with the-hole.
@@ -206,7 +206,7 @@ void ObjectBuiltinsAssembler::GetOwnValuesOrEntries(Node* context, Node* object,
 
       BIND(&if_enumerables_exists);
       {
-        Node* array = FinalyzeKeysOrValuesJSArray(
+        Node* array = FinalyzeEntriesOrValuesJSArray(
             context, values_or_entries, initial_size,
             var_property_count.value(), array_map, &if_empty_array);
         Return(array);
@@ -391,7 +391,7 @@ void ObjectBuiltinsAssembler::FastGetOwnValuesOrEntries(
 
   BIND(&done);
   {
-    Node* array = FinalyzeKeysOrValuesJSArray(
+    Node* array = FinalyzeEntriesOrValuesJSArray(
         context, values_or_entries, initial_size, var_property_count.value(),
         array_map, if_empty_array);
     var_values_or_entries->Bind(array);
@@ -399,7 +399,7 @@ void ObjectBuiltinsAssembler::FastGetOwnValuesOrEntries(
   }
 }
 
-Node* ObjectBuiltinsAssembler::FinalyzeKeysOrValuesJSArray(
+Node* ObjectBuiltinsAssembler::FinalyzeEntriesOrValuesJSArray(
     Node* context, Node* result, Node* initial_size, Node* size,
     Node* array_map, Label* if_empty) {
   CSA_ASSERT(this, IsFixedArray(result));
