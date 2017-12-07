@@ -127,25 +127,6 @@ static MaybeHandle<Object> KeyedGetObjectProperty(Isolate* isolate,
   return Runtime::GetObjectProperty(isolate, receiver_obj, key_obj);
 }
 
-Handle<FixedArray> GetObjectValuesOrEntries(Isolate* isolate,
-                                            Handle<JSObject> object,
-                                            Handle<FixedArray> entries,
-                                            bool get_entries) {
-  Handle<FixedArray> result_array = isolate->factory()->NewFixedArray(2);
-  int count = 0;
-  auto result = object->GetElementsAccessor()->CollectValuesOrEntries(
-      isolate, object, entries, get_entries, &count, ENUMERABLE_STRINGS);
-
-  if (result.IsNothing()) {
-    result_array->set(0, isolate->heap()->ToBoolean(false));
-  } else {
-    result_array->set(0, isolate->heap()->ToBoolean(true));
-  }
-  result_array->set(1, *isolate->factory()->NewNumber(count));
-
-  return result_array;
-}
-
 namespace {
 
 bool DeleteObjectPropertyFast(Isolate* isolate, Handle<JSReceiver> receiver,
@@ -459,6 +440,41 @@ RUNTIME_FUNCTION(Runtime_OptimizeObjectForAddingMultipleProperties) {
   return *object;
 }
 
+RUNTIME_FUNCTION(Runtime_ObjectValues) {
+  HandleScope scope(isolate);
+  DCHECK_EQ(2, args.length());
+
+  CONVERT_ARG_HANDLE_CHECKED(Object, object, 0);
+  CONVERT_SMI_ARG_CHECKED(try_fast_path, 1);
+
+  Handle<JSReceiver> receiver;
+  ASSIGN_RETURN_FAILURE_ON_EXCEPTION(isolate, receiver,
+                                     Object::ToObject(isolate, object));
+  Handle<FixedArray> entries;
+  ASSIGN_RETURN_FAILURE_ON_EXCEPTION(
+      isolate, entries,
+      JSReceiver::GetOwnValues(receiver, PropertyFilter::ENUMERABLE_STRINGS,
+                               static_cast<bool>(try_fast_path)));
+  return *isolate->factory()->NewJSArrayWithElements(entries);
+}
+
+RUNTIME_FUNCTION(Runtime_ObjectEntries) {
+  HandleScope scope(isolate);
+  DCHECK_EQ(2, args.length());
+
+  CONVERT_ARG_HANDLE_CHECKED(Object, object, 0);
+  CONVERT_SMI_ARG_CHECKED(try_fast_path, 1);
+
+  Handle<JSReceiver> receiver;
+  ASSIGN_RETURN_FAILURE_ON_EXCEPTION(isolate, receiver,
+                                     Object::ToObject(isolate, object));
+  Handle<FixedArray> entries;
+  ASSIGN_RETURN_FAILURE_ON_EXCEPTION(
+      isolate, entries,
+      JSReceiver::GetOwnEntries(receiver, PropertyFilter::ENUMERABLE_STRINGS,
+                                static_cast<bool>(try_fast_path)));
+  return *isolate->factory()->NewJSArrayWithElements(entries);
+}
 
 RUNTIME_FUNCTION(Runtime_GetProperty) {
   HandleScope scope(isolate);
@@ -985,25 +1001,6 @@ RUNTIME_FUNCTION(Runtime_CopyDataPropertiesWithExcludedProperties) {
                                                    &excluded_properties, false),
                isolate->heap()->exception());
   return *target;
-}
-
-RUNTIME_FUNCTION(Runtime_CollectObjectEntries) {
-  HandleScope scope(isolate);
-  DCHECK_LE(2, args.length());
-  CONVERT_ARG_HANDLE_CHECKED(JSObject, object, 0);
-  CONVERT_ARG_HANDLE_CHECKED(FixedArray, values_or_entries, 1);
-  auto ret = GetObjectValuesOrEntries(isolate, object, values_or_entries, true);
-  return *isolate->factory()->NewJSArrayWithElements(ret);
-}
-
-RUNTIME_FUNCTION(Runtime_CollectObjectValues) {
-  HandleScope scope(isolate);
-  DCHECK_LE(2, args.length());
-  CONVERT_ARG_HANDLE_CHECKED(JSObject, object, 0);
-  CONVERT_ARG_HANDLE_CHECKED(FixedArray, values_or_entries, 1);
-  auto ret =
-      GetObjectValuesOrEntries(isolate, object, values_or_entries, false);
-  return *isolate->factory()->NewJSArrayWithElements(ret);
 }
 
 namespace {

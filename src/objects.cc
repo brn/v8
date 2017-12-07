@@ -8712,6 +8712,154 @@ bool Map::OnlyHasSimpleProperties() const {
          !is_dictionary_map();
 }
 
+MUST_USE_RESULT Maybe<bool> FastGetOwnValuesOrEntries(
+    Isolate* isolate, Handle<JSReceiver> receiver, bool get_entries,
+    Handle<FixedArray>* result) {
+  Handle<Map> map(JSReceiver::cast(*receiver)->map(), isolate);
+
+  if (!map->IsJSObjectMap()) return Just(false);
+  if (!map->OnlyHasSimpleProperties()) return Just(false);
+
+  Handle<JSObject> object(JSObject::cast(*receiver));
+
+  Handle<DescriptorArray> descriptors(map->instance_descriptors(), isolate);
+  int number_of_own_descriptors = map->NumberOfOwnDescriptors();
+  int number_of_own_elements =
+      object->GetElementsAccessor()->GetCapacity(*object, object->elements());
+  Handle<FixedArray> values_or_entries = isolate->factory()->NewFixedArray(
+      number_of_own_descriptors + number_of_own_elements);
+  int count = 0;
+
+  if (object->elements() != isolate->heap()->empty_fixed_array()) {
+    MAYBE_RETURN(object->GetElementsAccessor()->CollectValuesOrEntries(
+                     isolate, object, values_or_entries, get_entries, &count,
+                     ENUMERABLE_STRINGS),
+                 Nothing<bool>());
+  }
+
+  bool stable = object->map() == *map;
+
+  for (int index = 0; index < number_of_own_descriptors; index++) {
+    Handle<Name> next_key(descriptors->GetKey(index), isolate);
+    if (!next_key->IsString()) continue;
+    Handle<Object> prop_value;
+
+    // Directly decode from the descriptor array if |from| did not change shape.
+    if (stable) {
+      PropertyDetails details = descriptors->GetDetails(index);
+      if (!details.IsEnumerable()) continue;
+      if (details.kind() == kData) {
+        if (details.location() == kDescriptor) {
+          prop_value = handle(descriptors->GetValue(index), isolate);
+        } else {
+          Representation representation = details.representation();
+          FieldIndex field_index = FieldIndex::ForDescriptor(*map, index);
+          prop_value =
+              JSObject::FastPropertyAt(object, representation, field_index);
+        }
+      } else {
+        ASSIGN_RETURN_ON_EXCEPTION_VALUE(
+            isolate, prop_value, JSReceiver::GetProperty(object, next_key),
+            Nothing<bool>());
+        stable = object->map() == *map;
+      }
+    } else {
+      // If the map did change, do a slower lookup. We are still guaranteed that
+      // the object has a simple shape, and that the key is a name.
+      LookupIterator it(object, next_key, LookupIterator::OWN_SKIP_INTERCEPTOR);
+      if (!it.IsFound()) continue;
+      DCHECK(it.state() == LookupIterator::DATA ||
+             it.state() == LookupIterator::ACCESSOR);
+      if (!it.IsEnumerable()) continue;
+      ASSIGN_RETURN_ON_EXCEPTION_VALUE(
+          isolate, prop_value, Object::GetProperty(&it), Nothing<bool>());
+    }
+
+    if (get_entries) {
+      prop_value = MakeEntryPair(isolate, next_key, prop_value);
+    }
+
+    values_or_entries->set(count, *prop_value);
+    count++;
+  }
+
+  if (count < values_or_entries->length()) values_or_entries->Shrink(count);
+  *result = values_or_entries;
+  return Just(true);
+}
+
+MaybeHandle<FixedArray> GetOwnValuesOrEntries(Isolate* isolate,
+                                              Handle<JSReceiver> object,
+                                              PropertyFilter filter,
+                                              bool try_fast_path,
+                                              bool get_entries) {
+  Handle<FixedArray> values_or_entries;
+  if (try_fast_path && filter == ENUMERABLE_STRINGS) {
+    Maybe<bool> fast_values_or_entries = FastGetOwnValuesOrEntries(
+        isolate, object, get_entries, &values_or_entries);
+    if (fast_values_or_entries.IsNothing()) return MaybeHandle<FixedArray>();
+    if (fast_values_or_entries.FromJust()) return values_or_entries;
+  }
+
+  PropertyFilter key_filter =
+    static_cast<PropertyFilter>(filter & ~ONLY_ENUMERABLE);
+
+  Handle<FixedArray> keys;
+  ASSIGN_RETURN_ON_EXCEPTION_VALUE(
+      isolate, keys,
+      KeyAccumulator::GetKeys(object, KeyCollectionMode::kOwnOnly, key_filter,
+                              GetKeysConversion::kConvertToString),
+      MaybeHandle<FixedArray>());
+
+  values_or_entries = isolate->factory()->NewFixedArray(keys->length());
+  int length = 0;
+
+  for (int i = 0; i < keys->length(); ++i) {
+    Handle<Name> key = Handle<Name>::cast(handle(keys->get(i), isolate));
+
+    if (filter & ONLY_ENUMERABLE) {
+      PropertyDescriptor descriptor;
+      Maybe<bool> did_get_descriptor = JSReceiver::GetOwnPropertyDescriptor(
+          isolate, object, key, &descriptor);
+      MAYBE_RETURN(did_get_descriptor, MaybeHandle<FixedArray>());
+      if (!did_get_descriptor.FromJust() || !descriptor.enumerable()) continue;
+    }
+
+    Handle<Object> value;
+    ASSIGN_RETURN_ON_EXCEPTION_VALUE(
+        isolate, value, JSReceiver::GetPropertyOrElement(object, key),
+        MaybeHandle<FixedArray>());
+
+    if (get_entries) {
+      Handle<FixedArray> entry_storage =
+          isolate->factory()->NewUninitializedFixedArray(2);
+      entry_storage->set(0, *key);
+      entry_storage->set(1, *value);
+      value = isolate->factory()->NewJSArrayWithElements(entry_storage,
+                                                         PACKED_ELEMENTS, 2);
+    }
+
+    values_or_entries->set(length, *value);
+    length++;
+  }
+  if (length < values_or_entries->length()) values_or_entries->Shrink(length);
+  return values_or_entries;
+}
+
+MaybeHandle<FixedArray> JSReceiver::GetOwnValues(Handle<JSReceiver> object,
+                                                 PropertyFilter filter,
+                                                 bool try_fast_path) {
+  return GetOwnValuesOrEntries(object->GetIsolate(), object, filter,
+                               try_fast_path, false);
+}
+
+MaybeHandle<FixedArray> JSReceiver::GetOwnEntries(Handle<JSReceiver> object,
+                                                  PropertyFilter filter,
+                                                  bool try_fast_path) {
+  return GetOwnValuesOrEntries(object->GetIsolate(), object, filter,
+                               try_fast_path, true);
+}
+
 bool Map::DictionaryElementsInPrototypeChainOnly() {
   if (IsDictionaryElementsKind(elements_kind())) {
     return false;

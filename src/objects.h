@@ -2181,6 +2181,14 @@ class JSReceiver: public HeapObject {
   MUST_USE_RESULT static inline MaybeHandle<FixedArray> OwnPropertyKeys(
       Handle<JSReceiver> object);
 
+  MUST_USE_RESULT static MaybeHandle<FixedArray> GetOwnValues(
+      Handle<JSReceiver> object, PropertyFilter filter,
+      bool try_fast_path = true);
+
+  MUST_USE_RESULT static MaybeHandle<FixedArray> GetOwnEntries(
+      Handle<JSReceiver> object, PropertyFilter filter,
+      bool try_fast_path = true);
+
   static const int kHashMask = PropertyArray::HashField::kMask;
 
   // Layout description.
