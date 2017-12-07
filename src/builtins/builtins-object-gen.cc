@@ -15,6 +15,11 @@ namespace internal {
 // -----------------------------------------------------------------------------
 // ES6 section 19.1 Object Objects
 
+enum CollectType: uint8_t {
+  kEntries,
+  kValues
+};
+
 typedef compiler::Node Node;
 
 class ObjectBuiltinsAssembler : public CodeStubAssembler {
@@ -35,18 +40,29 @@ class ObjectBuiltinsAssembler : public CodeStubAssembler {
                                 Node* enumerable, Node* configurable);
   Node* GetAccessorOrUndefined(Node* accessor, Label* if_bailout);
 
-  void GetOwnValuesOrEntries(Node* context, Node* object, bool get_entries);
+  void GetOwnValuesOrEntries(SloppyTNode<Context> context,
+                             SloppyTNode<JSObject> object,
+                             CollectType collect_type);
 
-  void OnlyHasSimpleProperties(Node* map, Label* if_slow);
+  void OnlyHasSimpleProperties(SloppyTNode<Map> map, Label* if_slow);
 
-  void FastGetOwnValuesOrEntries(Node* context, Node* object,
+  void FastGetOwnValuesOrEntries(SloppyTNode<Context> context,
+                                 SloppyTNode<JSObject> object,
                                  Variable* var_values_or_entries,
                                  Label* if_fast, Label* if_slow,
-                                 Label* if_empty_array, bool get_entries);
+                                 Label* if_empty_array,
+                                 CollectType collect_type);
 
-  Node* FinalyzeEntriesOrValuesJSArray(Node* context, Node* values_or_entries,
-                                       Node* initial_size, Node* size,
-                                       Node* array_map, Label* if_empty);
+  Node* GetObjectElementsCapacity(
+      SloppyTNode<HeapObject> object,
+      SloppyTNode<FixedArrayBase> backing_store);
+
+  Node* FinalizeValuesOrEntriesJSArray(
+      SloppyTNode<Context> context,
+      SloppyTNode<FixedArray> values_or_entries,
+      SloppyTNode<IntPtrT> initial_size,
+      SloppyTNode<IntPtrT> size,
+      SloppyTNode<Map> array_map, Label* if_empty);
 };
 
 void ObjectBuiltinsAssembler::ReturnToStringFormat(Node* context,
@@ -110,10 +126,10 @@ Node* ObjectBuiltinsAssembler::ConstructDataDescriptor(Node* context,
   return js_desc;
 }
 
-void ObjectBuiltinsAssembler::GetOwnValuesOrEntries(Node* context, Node* object,
-                                                    bool get_entries) {
-  object = CallBuiltin(Builtins::kToObject, context, object);
-
+void ObjectBuiltinsAssembler::GetOwnValuesOrEntries(
+    SloppyTNode<Context> context,
+    SloppyTNode<JSObject> object,
+    CollectType collect_type) {
   VARIABLE(var_values_or_entries, MachineRepresentation::kTagged);
   Label if_fast(this, Label::kDeferred), if_slow(this),
       if_empty_array(this, Label::kDeferred);
@@ -121,7 +137,7 @@ void ObjectBuiltinsAssembler::GetOwnValuesOrEntries(Node* context, Node* object,
   Node* array_map = LoadJSArrayElementsMap(PACKED_ELEMENTS, native_context);
 
   FastGetOwnValuesOrEntries(context, object, &var_values_or_entries, &if_fast,
-                            &if_slow, &if_empty_array, get_entries);
+                            &if_slow, &if_empty_array, collect_type);
 
   BIND(&if_fast);
   Return(var_values_or_entries.value());
@@ -175,7 +191,7 @@ void ObjectBuiltinsAssembler::GetOwnValuesOrEntries(Node* context, Node* object,
       Node* value =
           CallRuntime(Runtime::kGetProperty, context, object, next_key);
 
-      if (get_entries) {
+      if (collect_type == CollectType::kEntries) {
         Node* array = nullptr;
         Node* elements = nullptr;
         std::tie(array, elements) = AllocateUninitializedJSArrayWithElements(
@@ -206,7 +222,7 @@ void ObjectBuiltinsAssembler::GetOwnValuesOrEntries(Node* context, Node* object,
 
       BIND(&if_enumerables_exists);
       {
-        Node* array = FinalyzeEntriesOrValuesJSArray(
+        Node* array = FinalizeValuesOrEntriesJSArray(
             context, values_or_entries, initial_size,
             var_property_count.value(), array_map, &if_empty_array);
         Return(array);
@@ -223,7 +239,7 @@ void ObjectBuiltinsAssembler::GetOwnValuesOrEntries(Node* context, Node* object,
   }
 }
 
-void ObjectBuiltinsAssembler::OnlyHasSimpleProperties(Node* map,
+void ObjectBuiltinsAssembler::OnlyHasSimpleProperties(SloppyTNode<Map> map,
                                                       Label* if_slow) {
   Node* instance_type = LoadMapInstanceType(map);
   Node* is_string_wrapper_elements_kind = IsStringWrapperElementsKind(map);
@@ -232,15 +248,19 @@ void ObjectBuiltinsAssembler::OnlyHasSimpleProperties(Node* map,
   Node* has_hidden_prototype = HasHiddenPrototype(map);
   Node* is_dictionary_map = IsDictionaryMap(map);
 
-  GotoIf(is_string_wrapper_elements_kind, if_slow);
-  GotoIf(is_special_receiver_instance_type, if_slow);
-  GotoIf(has_hidden_prototype, if_slow);
-  GotoIf(is_dictionary_map, if_slow);
+  Node* has_simple_properties =
+    WordOr(is_string_wrapper_elements_kind,
+           WordOr(is_special_receiver_instance_type,
+                  WordOr(has_hidden_prototype,
+                         is_dictionary_map)));
+
+  GotoIf(has_simple_properties, if_slow);
 }
 
 void ObjectBuiltinsAssembler::FastGetOwnValuesOrEntries(
-    Node* context, Node* object, Variable* var_values_or_entries,
-    Label* if_fast, Label* if_slow, Label* if_empty_array, bool get_entries) {
+    SloppyTNode<Context> context, SloppyTNode<JSObject> object,
+    Variable* var_values_or_entries, Label* if_fast, Label* if_slow,
+    Label* if_empty_array, CollectType collect_type) {
   Node* map = LoadMap(object);
   GotoIfNot(IsJSObjectMap(map), if_slow);
   OnlyHasSimpleProperties(map, if_slow);
@@ -252,19 +272,19 @@ void ObjectBuiltinsAssembler::FastGetOwnValuesOrEntries(
   Node* object_descriptors = LoadMapDescriptors(map);
   Node* number_of_own_descriptors =
       DecodeWord32<Map::NumberOfOwnDescriptorsBits>(bit_field3);
-  Node* number_of_own_elements =
-      CallRuntime(Runtime::kGetObjectElementsCount, context, object);
+  Node* number_of_own_elements = GetObjectElementsCapacity(object, elements);
 
   VARIABLE(var_property_count, MachineType::PointerRepresentation(),
            IntPtrConstant(0));
   Label if_elements(this), if_properties(this), done(this);
 
   Node* initial_size =
-      IntPtrAdd(number_of_own_descriptors, SmiUntag(number_of_own_elements));
+      IntPtrAdd(number_of_own_descriptors, number_of_own_elements);
   GotoIf(WordEqual(initial_size, IntPtrConstant(0)), if_empty_array);
 
   Node* values_or_entries =
-      AllocateFixedArray(PACKED_ELEMENTS, initial_size, INTPTR_PARAMETERS);
+    AllocateFixedArray(PACKED_ELEMENTS, initial_size, INTPTR_PARAMETERS,
+                       kAllowLargeObjectAllocation);
 
   // If object has elements that type is a Dictionary,
   // we can't get a precise element count (always too big capacity).
@@ -281,7 +301,7 @@ void ObjectBuiltinsAssembler::FastGetOwnValuesOrEntries(
   BIND(&if_elements);
   {
     Node* result_array = nullptr;
-    if (get_entries) {
+    if (collect_type == CollectType::kEntries) {
       result_array = CallRuntime(Runtime::kCollectObjectEntries, context,
                                  object, values_or_entries);
     } else {
@@ -359,7 +379,7 @@ void ObjectBuiltinsAssembler::FastGetOwnValuesOrEntries(
 
         BIND(&make_pair);
         {
-          if (get_entries) {
+          if (collect_type == CollectType::kEntries) {
             Node* array = nullptr;
             Node* elements = nullptr;
             std::tie(array, elements) =
@@ -391,7 +411,7 @@ void ObjectBuiltinsAssembler::FastGetOwnValuesOrEntries(
 
   BIND(&done);
   {
-    Node* array = FinalyzeEntriesOrValuesJSArray(
+    Node* array = FinalizeValuesOrEntriesJSArray(
         context, values_or_entries, initial_size, var_property_count.value(),
         array_map, if_empty_array);
     var_values_or_entries->Bind(array);
@@ -399,9 +419,107 @@ void ObjectBuiltinsAssembler::FastGetOwnValuesOrEntries(
   }
 }
 
-Node* ObjectBuiltinsAssembler::FinalyzeEntriesOrValuesJSArray(
-    Node* context, Node* result, Node* initial_size, Node* size,
-    Node* array_map, Label* if_empty) {
+Node* ObjectBuiltinsAssembler::GetObjectElementsCapacity(
+    SloppyTNode<HeapObject> object, SloppyTNode<FixedArrayBase> backing_store) {
+  Node* map = LoadMap(object);
+  Node* kind = LoadMapElementsKind(map);
+  VARIABLE(var_capacity, MachineRepresentation::kWord32);
+  Label if_simple_length(this), if_check_required(this),
+    if_arguments_length(this),
+    if_default(this), done(this);
+  // clang-format off
+  int32_t values[] = {
+    // Handled by {if_fixedarray_length}
+    PACKED_SMI_ELEMENTS,
+    HOLEY_SMI_ELEMENTS,
+    PACKED_ELEMENTS,
+    HOLEY_ELEMENTS,
+    PACKED_DOUBLE_ELEMENTS,
+    HOLEY_DOUBLE_ELEMENTS,
+    DICTIONARY_ELEMENTS,
+    FAST_STRING_WRAPPER_ELEMENTS,
+    SLOW_STRING_WRAPPER_ELEMENTS,
+    // Handled by {if_check_required}
+    UINT8_ELEMENTS,
+    INT8_ELEMENTS,
+    UINT16_ELEMENTS,
+    INT16_ELEMENTS,
+    UINT32_ELEMENTS,
+    INT32_ELEMENTS,
+    FLOAT32_ELEMENTS,
+    FLOAT64_ELEMENTS,
+    UINT8_CLAMPED_ELEMENTS,
+    // Handled by {if_arguments_length}
+    FAST_SLOPPY_ARGUMENTS_ELEMENTS,
+    SLOW_SLOPPY_ARGUMENTS_ELEMENTS,
+  };
+
+  Label* labels[] = {
+    &if_simple_length, &if_simple_length,
+    &if_simple_length, &if_simple_length,
+    &if_simple_length, &if_simple_length,
+    &if_simple_length, &if_simple_length,
+    &if_simple_length,
+    &if_check_required, &if_check_required,
+    &if_check_required, &if_check_required,
+    &if_check_required, &if_check_required,
+    &if_check_required, &if_check_required,
+    &if_check_required,
+    &if_arguments_length, &if_arguments_length
+  };
+
+  Switch(kind, &if_default, values, labels, arraysize(values));
+
+  BIND(&if_check_required);
+  {
+    Node* buffer = LoadObjectField(object, JSArrayBufferView::kBufferOffset);
+    Node* bit_field = UncheckedCast<Int32T>(
+        LoadObjectField(buffer, JSArrayBuffer::kBitFieldOffset,
+                        MachineType::Uint8()));
+    Label if_zero(this);
+    Node* was_nueterd = DecodeWord32<JSArrayBuffer::WasNeutered>(bit_field);
+    Branch(was_nueterd, &if_zero, &if_simple_length);
+    BIND(&if_zero);
+    var_capacity.Bind(Int32Constant(0));
+    Goto(&done);
+  }
+
+  BIND(&if_simple_length);
+  {
+    Node* capacity = LoadObjectField(backing_store,
+                                     FixedArrayBase::kLengthOffset);
+    var_capacity.Bind(capacity);
+    Goto(&done);
+  }
+
+  BIND(&if_arguments_length);
+  {
+    Node* arguments = LoadFixedArrayElement(
+        backing_store, SloppyArgumentsElements::kArgumentsIndex);
+    Node* backing_store_length = LoadFixedArrayBaseLength(backing_store);
+    Node* parameter_map_length = SmiSub(backing_store_length,
+        SmiConstant(SloppyArgumentsElements::kParameterMapStart));
+    Node* arguments_length = LoadObjectField(arguments,
+                                             FixedArrayBase::kLengthOffset);
+    Node* capacity = SmiAdd(parameter_map_length, arguments_length);
+    var_capacity.Bind(capacity);
+    Goto(&done);
+  }
+
+  BIND(&if_default);
+  {
+    var_capacity.Bind(Int32Constant(0));
+    Goto(&done);
+  }
+
+  BIND(&done);
+  return SmiUntag(var_capacity.value());
+}
+
+Node* ObjectBuiltinsAssembler::FinalizeValuesOrEntriesJSArray(
+    SloppyTNode<Context> context, SloppyTNode<FixedArray> result,
+    SloppyTNode<IntPtrT> initial_size, SloppyTNode<IntPtrT> size,
+    SloppyTNode<Map> array_map, Label* if_empty) {
   CSA_ASSERT(this, IsFixedArray(result));
   CSA_ASSERT(this, IsJSArrayMap(array_map));
 
@@ -598,13 +716,15 @@ TF_BUILTIN(ObjectKeys, ObjectBuiltinsAssembler) {
 TF_BUILTIN(ObjectValues, ObjectBuiltinsAssembler) {
   Node* object = Parameter(Descriptor::kObject);
   Node* context = Parameter(Descriptor::kContext);
-  GetOwnValuesOrEntries(context, object, false);
+  object = CallBuiltin(Builtins::kToObject, context, object);
+  GetOwnValuesOrEntries(context, object, CollectType::kValues);
 }
 
 TF_BUILTIN(ObjectEntries, ObjectBuiltinsAssembler) {
   Node* object = Parameter(Descriptor::kObject);
   Node* context = Parameter(Descriptor::kContext);
-  GetOwnValuesOrEntries(context, object, true);
+  object = CallBuiltin(Builtins::kToObject, context, object);
+  GetOwnValuesOrEntries(context, object, CollectType::kEntries);
 }
 
 // ES #sec-object.prototype.isprototypeof

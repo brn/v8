@@ -1006,16 +1006,6 @@ RUNTIME_FUNCTION(Runtime_CollectObjectValues) {
   return *isolate->factory()->NewJSArrayWithElements(ret);
 }
 
-RUNTIME_FUNCTION(Runtime_GetObjectElementsCount) {
-  HandleScope scope(isolate);
-  DCHECK_LE(1, args.length());
-  CONVERT_ARG_HANDLE_CHECKED(JSObject, object, 0);
-
-  int count =
-      object->GetElementsAccessor()->GetCapacity(*object, object->elements());
-  return *isolate->factory()->NewNumber(count);
-}
-
 namespace {
 
 inline void TrySetNative(Handle<Object> maybe_func) {

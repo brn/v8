@@ -393,7 +393,6 @@ namespace internal {
   F(ObjectCreate, 2, 1)                                         \
   F(InternalSetPrototype, 2, 1)                                 \
   F(OptimizeObjectForAddingMultipleProperties, 2, 1)            \
-  F(GetObjectElementsCount, 1, 1)                               \
   F(CollectObjectEntries, 2, 1)                                 \
   F(CollectObjectValues, 2, 1)                                  \
   F(GetProperty, 2, 1)                                          \
