@@ -7200,8 +7200,7 @@ void CodeStubAssembler::TryPrototypeChainLookup(
 
 Node* CodeStubAssembler::HasHiddenPrototype(SloppyTNode<Map> map) {
   Node* bit_field3 = LoadMapBitField3(map);
-  return DecodeWord32(bit_field3, Map::HasHiddenPrototype::kShift,
-                      Map::HasHiddenPrototype::kMask);
+  return DecodeWord32<Map::HasHiddenPrototype>(bit_field3);
 }
 
 Node* CodeStubAssembler::HasInPrototypeChain(Node* context, Node* object,

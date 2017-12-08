@@ -15,7 +15,7 @@ namespace internal {
 // -----------------------------------------------------------------------------
 // ES6 section 19.1 Object Objects
 
-enum CollectType: uint8_t {
+enum CollectType {
   kEntries,
   kValues
 };
@@ -46,7 +46,7 @@ class ObjectBuiltinsAssembler : public CodeStubAssembler {
                              SloppyTNode<JSObject> object,
                              CollectType collect_type);
 
-  void OnlyHasSimpleProperties(SloppyTNode<Map> map, Label* if_slow);
+  void GotoIfOnlyHasSimpleProperties(SloppyTNode<Map> map, Label* if_slow);
 
   TNode<FixedArray> FastGetOwnValuesOrEntries(SloppyTNode<Context> context,
                                               SloppyTNode<JSObject> object,
@@ -126,27 +126,38 @@ void ObjectBuiltinsAssembler::GetOwnValuesOrEntries(
     SloppyTNode<Context> context,
     SloppyTNode<JSObject> object,
     CollectType collect_type) {
-  VARIABLE(var_try_fast_path, MachineRepresentation::kTagged, SmiConstant(0));
-  Label if_try_fast_path(this),
+  VARIABLE(var_call_runtime_with_fast_path,
+           MachineRepresentation::kTagged, SmiConstant(0));
+  Label call_runtime_with_fast_path(this),
     if_call_runtime(this, Label::kDeferred),
-    if_empty_array(this, Label::kDeferred);
+    if_no_properties(this, Label::kDeferred);
 
   Node* map = LoadMap(object);
   GotoIfNot(IsJSObjectMap(map), &if_call_runtime);
-  OnlyHasSimpleProperties(map, &if_call_runtime);
+  GotoIfOnlyHasSimpleProperties(map, &if_call_runtime);
 
   Node* elements = LoadElements(object);
   // If elements is exists in object, we treat it as slow case.
   // So, we go to runtime call.
-  GotoIfNot(IsEmptyFixedArray(elements), &if_try_fast_path);
+  GotoIfNot(IsEmptyFixedArray(elements), &call_runtime_with_fast_path);
 
   TNode<FixedArray> result = FastGetOwnValuesOrEntries(
-      context, object, &if_empty_array, collect_type);
+      context, object, &if_no_properties, collect_type);
   Return(result);
 
-  BIND(&if_try_fast_path);
+  BIND(&if_no_properties);
   {
-    var_try_fast_path.Bind(SmiConstant(1));
+    Node* native_context = LoadNativeContext(context);
+    Node* array_map = LoadJSArrayElementsMap(PACKED_ELEMENTS, native_context);
+    Node* empty_array =
+        AllocateJSArray(PACKED_ELEMENTS, array_map, SmiConstant(0),
+                        SmiConstant(0), nullptr, SMI_PARAMETERS);
+    Return(empty_array);
+  }
+
+  BIND(&call_runtime_with_fast_path);
+  {
+    var_call_runtime_with_fast_path.Bind(SmiConstant(1));
     Goto(&if_call_runtime);
   }
 
@@ -156,36 +167,27 @@ void ObjectBuiltinsAssembler::GetOwnValuesOrEntries(
     // In slow case, we simply call runtime.
     if (collect_type == CollectType::kEntries) {
       result = CallRuntime(Runtime::kObjectEntries, context, object,
-                           var_try_fast_path.value());
+                           var_call_runtime_with_fast_path.value());
     } else {
       result = CallRuntime(Runtime::kObjectValues, context, object,
-                           var_try_fast_path.value());
+                           var_call_runtime_with_fast_path.value());
     }
     Return(result);
   }
-
-  BIND(&if_empty_array);
-  {
-    Node* native_context = LoadNativeContext(context);
-    Node* array_map = LoadJSArrayElementsMap(PACKED_ELEMENTS, native_context);
-    Node* empty_array =
-        AllocateJSArray(PACKED_ELEMENTS, array_map, SmiConstant(0),
-                        SmiConstant(0), nullptr, SMI_PARAMETERS);
-    Return(empty_array);
-  }
 }
 
-void ObjectBuiltinsAssembler::OnlyHasSimpleProperties(SloppyTNode<Map> map,
-                                                      Label* if_slow) {
+void ObjectBuiltinsAssembler::GotoIfOnlyHasSimpleProperties(
+    SloppyTNode<Map> map,
+    Label* if_slow) {
   GotoIf(IsStringWrapperElementsKind(map), if_slow);
-  GotoIf(IsSpecialReceiverInstanceType(LoadMapInstanceType(map)), if_slow);
+  GotoIf(IsSpecialReceiverMap(map), if_slow);
   GotoIf(HasHiddenPrototype(map), if_slow);
   GotoIf(IsDictionaryMap(map), if_slow);
 }
 
 TNode<FixedArray> ObjectBuiltinsAssembler::FastGetOwnValuesOrEntries(
     SloppyTNode<Context> context, SloppyTNode<JSObject> object,
-    Label* if_empty_array, CollectType collect_type) {
+    Label* if_no_properties, CollectType collect_type) {
   Node* native_context = LoadNativeContext(context);
   Node* array_map = LoadJSArrayElementsMap(PACKED_ELEMENTS, native_context);
   Node* map = LoadMap(object);
@@ -196,12 +198,12 @@ TNode<FixedArray> ObjectBuiltinsAssembler::FastGetOwnValuesOrEntries(
   VARIABLE(var_property_count, MachineType::PointerRepresentation(),
            IntPtrConstant(0));
   GotoIf(WordEqual(number_of_own_descriptors,
-                   IntPtrConstant(0)), if_empty_array);
+                   IntPtrConstant(0)), if_no_properties);
 
   Node* values_or_entries =
     AllocateFixedArray(PACKED_ELEMENTS, number_of_own_descriptors,
                        INTPTR_PARAMETERS, kAllowLargeObjectAllocation);
-  // number_of_own_descriptors includes unenumerable property key
+  // number_of_own_descriptors includes non-enumerable property key
   // and we should exclude it from the array.
   // But if do so, the array has extra capacity and illegal area.
   // So we fill the array with the-hole.
@@ -217,6 +219,7 @@ TNode<FixedArray> ObjectBuiltinsAssembler::FastGetOwnValuesOrEntries(
   Label loop(this, 3, vars), after_loop(this), loop_condition(this);
   Branch(IntPtrEqual(var_index.value(), number_of_own_descriptors),
          &after_loop, &loop);
+
   // We dont use BuildFastLoop.
   // Instead, we use hand-written loop
   // because of we need to use 'continue' functionality.
@@ -228,10 +231,9 @@ TNode<FixedArray> ObjectBuiltinsAssembler::FastGetOwnValuesOrEntries(
 
     Node* next_key =
       DescriptorArrayGetKey(object_descriptors, var_index.value());
-    Node* key_instance_type = LoadMapInstanceType(LoadMap(next_key));
 
     // Skip Symbols.
-    GotoIf(WordEqual(key_instance_type, IntPtrConstant(SYMBOL_TYPE)),
+    GotoIf(WordEqual(IsSymbol(next_key), IntPtrConstant(SYMBOL_TYPE)),
            &loop_condition);
 
     {
@@ -295,7 +297,7 @@ TNode<FixedArray> ObjectBuiltinsAssembler::FastGetOwnValuesOrEntries(
   return FinalizeValuesOrEntriesJSArray(
       context, values_or_entries,
       number_of_own_descriptors,
-      var_property_count.value(), array_map, if_empty_array);
+      var_property_count.value(), array_map, if_no_properties);
 }
 
 TNode<FixedArray> ObjectBuiltinsAssembler::FinalizeValuesOrEntriesJSArray(
