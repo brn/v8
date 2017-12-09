@@ -312,7 +312,6 @@ namespace internal {
   F(ReThrow, 1, 1)                                                   \
   F(RunMicrotasks, 0, 1)                                             \
   F(StackGuard, 0, 1)                                                \
-  F(ShrinkFixedArray, 2, 1)                                          \
   F(Throw, 1, 1)                                                     \
   F(ThrowApplyNonFunction, 1, 1)                                     \
   F(ThrowCannotConvertToPrimitive, 0, 1)                             \

@@ -48,15 +48,16 @@ class ObjectBuiltinsAssembler : public CodeStubAssembler {
 
   void GotoIfOnlyHasSimpleProperties(SloppyTNode<Map> map, Label* if_slow);
 
-  TNode<FixedArray> FastGetOwnValuesOrEntries(SloppyTNode<Context> context,
-                                              SloppyTNode<JSObject> object,
-                                              Label* if_empty_array,
-                                              CollectType collect_type);
+  TNode<FixedArray> FastGetOwnValuesOrEntries(
+      SloppyTNode<Context> context,
+      SloppyTNode<JSObject> object,
+      Label* if_call_runtime_with_fast_path,
+      Label* if_no_properties,
+      CollectType collect_type);
 
   TNode<FixedArray> FinalizeValuesOrEntriesJSArray(
       SloppyTNode<Context> context,
       SloppyTNode<FixedArray> values_or_entries,
-      SloppyTNode<IntPtrT> initial_size,
       SloppyTNode<IntPtrT> size,
       SloppyTNode<Map> array_map, Label* if_empty);
 };
@@ -142,7 +143,8 @@ void ObjectBuiltinsAssembler::GetOwnValuesOrEntries(
   GotoIfNot(IsEmptyFixedArray(elements), &call_runtime_with_fast_path);
 
   TNode<FixedArray> result = FastGetOwnValuesOrEntries(
-      context, object, &if_no_properties, collect_type);
+      context, object, &call_runtime_with_fast_path,
+      &if_no_properties, collect_type);
   Return(result);
 
   BIND(&if_no_properties);
@@ -187,142 +189,166 @@ void ObjectBuiltinsAssembler::GotoIfOnlyHasSimpleProperties(
 
 TNode<FixedArray> ObjectBuiltinsAssembler::FastGetOwnValuesOrEntries(
     SloppyTNode<Context> context, SloppyTNode<JSObject> object,
-    Label* if_no_properties, CollectType collect_type) {
+    Label* if_call_runtime_with_fast_path, Label* if_no_properties,
+    CollectType collect_type) {
   Node* native_context = LoadNativeContext(context);
   Node* array_map = LoadJSArrayElementsMap(PACKED_ELEMENTS, native_context);
   Node* map = LoadMap(object);
   Node* bit_field3 = LoadMapBitField3(map);
-  Node* number_of_own_descriptors =
-      DecodeWord32<Map::NumberOfOwnDescriptorsBits>(bit_field3);
 
-  VARIABLE(var_property_count, MachineType::PointerRepresentation(),
-           IntPtrConstant(0));
-  GotoIf(WordEqual(number_of_own_descriptors,
-                   IntPtrConstant(0)), if_no_properties);
+  VARIABLE(var_array_size, MachineType::PointerRepresentation());
+  VARIABLE(var_values_or_entries, MachineRepresentation::kTagged);
+  Label if_has_enum_cache(this), if_not_has_enum_cache(this),
+    collect_entries(this, &var_array_size);
+  Node* object_enum_length =
+      DecodeWordFromWord32<Map::EnumLengthBits>(bit_field3);
+  Node* has_enum_cache =
+    WordNotEqual(object_enum_length, IntPtrConstant(kInvalidEnumCacheSentinel));
+  Branch(has_enum_cache, &if_has_enum_cache, &if_not_has_enum_cache);
 
-  Node* values_or_entries =
-    AllocateFixedArray(PACKED_ELEMENTS, number_of_own_descriptors,
-                       INTPTR_PARAMETERS, kAllowLargeObjectAllocation);
-  // number_of_own_descriptors includes non-enumerable property key
-  // and we should exclude it from the array.
-  // But if do so, the array has extra capacity and illegal area.
-  // So we fill the array with the-hole.
-  FillFixedArrayWithValue(PACKED_ELEMENTS, values_or_entries, IntPtrConstant(0),
-                          number_of_own_descriptors,
-                          Heap::kTheHoleValueRootIndex);
-
-  VARIABLE(var_index, MachineType::PointerRepresentation(),
-           IntPtrConstant(0));
-  VARIABLE(var_property_value, MachineRepresentation::kTagged,
-           UndefinedConstant());
-  Variable* vars[] = {&var_index, &var_property_count, &var_property_value};
-  Label loop(this, 3, vars), after_loop(this), loop_condition(this);
-  Branch(IntPtrEqual(var_index.value(), number_of_own_descriptors),
-         &after_loop, &loop);
-
-  // We dont use BuildFastLoop.
-  // Instead, we use hand-written loop
-  // because of we need to use 'continue' functionality.
-  BIND(&loop);
+  BIND(&if_has_enum_cache);
   {
-    // Map must be loaded each loop header to get newest map object.
-    map = LoadMap(object);
-    Node* object_descriptors = LoadMapDescriptors(map);
-
-    Node* next_key =
-      DescriptorArrayGetKey(object_descriptors, var_index.value());
-
-    // Skip Symbols.
-    GotoIf(WordEqual(IsSymbol(next_key), IntPtrConstant(SYMBOL_TYPE)),
-           &loop_condition);
-
-    {
-      Node* instance_type = LoadMapInstanceType(map);
-      VARIABLE(var_details, MachineRepresentation::kWord32);
-      VARIABLE(var_raw_value, MachineRepresentation::kTagged);
-      Label if_found(this), if_bailout(this),
-        store_values_or_entries(this);
-
-      TryGetOwnProperty(context, object, object, map, instance_type, next_key,
-                        &if_found, &var_property_value, &var_details,
-                        &var_raw_value, &loop_condition, &if_bailout,
-                        kCallJSGetter);
-
-      BIND(&if_bailout);
-      {
-        var_property_value.Bind(UndefinedConstant());
-        Goto(&store_values_or_entries);
-      }
-
-      BIND(&if_found);
-      {
-        Node* details = var_details.value();
-        Node* attributes =
-          DecodeWord32<PropertyDetails::AttributesField>(details);
-        Node* dont_enum = Int32Constant(PropertyAttributes::DONT_ENUM);
-        GotoIf(WordNotEqual(WordAnd(attributes, dont_enum), SmiConstant(0)),
-               &loop_condition);
-        Goto(&store_values_or_entries);
-      }
-
-      BIND(&store_values_or_entries);
-      {
-        if (collect_type == CollectType::kEntries) {
-          Node* array = nullptr;
-          Node* elements = nullptr;
-          std::tie(array, elements) =
-            AllocateUninitializedJSArrayWithElements(
-                PACKED_ELEMENTS, array_map, SmiConstant(2), nullptr,
-                IntPtrConstant(2));
-          StoreFixedArrayElement(elements, 0, next_key, SKIP_WRITE_BARRIER);
-          StoreFixedArrayElement(elements, 1, var_property_value.value(),
-                                 SKIP_WRITE_BARRIER);
-          var_property_value.Bind(array);
-        }
-        StoreFixedArrayElement(values_or_entries, var_property_count.value(),
-                               var_property_value.value());
-        Increment(&var_property_count, 1, INTPTR_PARAMETERS);
-        Goto(&loop_condition);
-      }
-    }
-
-    BIND(&loop_condition);
-    {
-      Increment(&var_index, 1, INTPTR_PARAMETERS);
-      Branch(IntPtrEqual(var_index.value(), number_of_own_descriptors),
-             &after_loop, &loop);
-    }
+    var_array_size.Bind(object_enum_length);
+    Goto(&collect_entries);
   }
-  BIND(&after_loop);
-  return FinalizeValuesOrEntriesJSArray(
-      context, values_or_entries,
-      number_of_own_descriptors,
-      var_property_count.value(), array_map, if_no_properties);
+
+  BIND(&if_not_has_enum_cache);
+  {
+    var_array_size.Bind(
+        DecodeWord32<Map::NumberOfOwnDescriptorsBits>(bit_field3));
+    Goto(&collect_entries);
+  }
+
+  BIND(&collect_entries);
+  {
+    GotoIf(WordEqual(var_array_size.value(),
+                     IntPtrConstant(0)), if_no_properties);
+    Node* values_or_entries =
+      AllocateFixedArray(PACKED_ELEMENTS, var_array_size.value(),
+                         INTPTR_PARAMETERS, kAllowLargeObjectAllocation);
+    var_values_or_entries.Bind(values_or_entries);
+
+    // In case we haven't enum_cache, we have to use number_of_own_descriptors.
+    // But number_of_own_descriptors includes non-enumerable property key
+    // and we should exclude it from the array.
+    // But if do so, the array has extra capacity and invalid addresses.
+    // So we fill the array with the-hole.
+    // And even if in case we have enum_cache,
+    // we can't detect accessor of object until loop through descritpros.
+    // So if object might have accessor,
+    // we will remain invalid addresses of FixedArray.
+    // Because in that case, we need to jump to runtime call.
+    // So the array filled by the-hole event if enum_cache exists.
+    FillFixedArrayWithValue(PACKED_ELEMENTS, var_values_or_entries.value(),
+                            IntPtrConstant(0),
+                            var_array_size.value(),
+                            Heap::kTheHoleValueRootIndex);
+
+    VARIABLE(var_property_count, MachineType::PointerRepresentation(),
+           IntPtrConstant(0));
+    VARIABLE(var_index, MachineType::PointerRepresentation(),
+             IntPtrConstant(0));
+    VARIABLE(var_property_value, MachineRepresentation::kTagged,
+             UndefinedConstant());
+    Variable* vars[] = {&var_index, &var_property_count, &var_property_value};
+    Label loop(this, 3, vars), after_loop(this), loop_condition(this);
+    Branch(IntPtrEqual(var_index.value(), var_array_size.value()),
+           &after_loop, &loop);
+
+    // We dont use BuildFastLoop.
+    // Instead, we use hand-written loop
+    // because of we need to use 'continue' functionality.
+    BIND(&loop);
+    {
+      // Map must be loaded each loop header to get newest map object.
+      map = LoadMap(object);
+
+      // Let desc be ? O.[[GetOwnProperty]](key).
+      Node* descriptors = LoadMapDescriptors(map);
+      Node* next_key =
+        DescriptorArrayGetKey(descriptors, var_index.value());
+
+      // Skip Symbols.
+      GotoIf(IsSymbol(next_key), &loop_condition);
+      {
+        VARIABLE(var_property_index, MachineType::PointerRepresentation());
+        Label if_property_found(this), store_value_or_entry(this);
+        Node* bitfield3 = LoadMapBitField3(map);
+
+        DescriptorLookup(next_key, descriptors, bitfield3,
+                         &if_property_found, &var_property_index,
+                         &loop_condition);
+
+        BIND(&if_property_found);
+        {
+          Node* details = LoadDetailsByKeyIndex<DescriptorArray>(
+              descriptors, var_property_index.value());
+          Node* kind = LoadPropertyKind(details);
+
+          // If property is accessor, we escape fast path and call runtime.
+          GotoIf(IsPropertyKindAccessor(kind), if_call_runtime_with_fast_path);
+          CSA_ASSERT(this, IsPropertyKindData(kind));
+
+          // If desc is not undefined and desc.[[Enumerable]] is true, then
+          GotoIfNot(IsPropertyEnumerable(details), &loop_condition);
+
+          // Let value be ? Get(O, key).
+          LoadPropertyFromFastObject(
+              object, map, descriptors, var_property_index.value(), details,
+              &var_property_value);
+          Goto(&store_value_or_entry);
+        }
+
+        BIND(&store_value_or_entry);
+        {
+          // If kind is "value", append value to properties.
+          Node* value = var_property_value.value();
+
+          if (collect_type == CollectType::kEntries) {
+            // Let entry be CreateArrayFromList(« key, value »).
+            Node* array = nullptr;
+            Node* elements = nullptr;
+            std::tie(array, elements) =
+              AllocateUninitializedJSArrayWithElements(
+                  PACKED_ELEMENTS, array_map, SmiConstant(2), nullptr,
+                  IntPtrConstant(2));
+            StoreFixedArrayElement(elements, 0, next_key, SKIP_WRITE_BARRIER);
+            StoreFixedArrayElement(elements, 1, value, SKIP_WRITE_BARRIER);
+            value = array;
+          }
+
+          StoreFixedArrayElement(
+              var_values_or_entries.value(), var_property_count.value(), value);
+          Increment(&var_property_count, 1, INTPTR_PARAMETERS);
+          Goto(&loop_condition);
+        }
+      }
+
+      BIND(&loop_condition);
+      {
+        Increment(&var_index, 1, INTPTR_PARAMETERS);
+        Branch(IntPtrEqual(var_index.value(), var_array_size.value()),
+               &after_loop, &loop);
+      }
+    }
+    BIND(&after_loop);
+    return FinalizeValuesOrEntriesJSArray(
+        context, var_values_or_entries.value(),
+        var_property_count.value(), array_map, if_no_properties);
+  }
 }
 
 TNode<FixedArray> ObjectBuiltinsAssembler::FinalizeValuesOrEntriesJSArray(
     SloppyTNode<Context> context, SloppyTNode<FixedArray> result,
-    SloppyTNode<IntPtrT> initial_size, SloppyTNode<IntPtrT> size,
-    SloppyTNode<Map> array_map, Label* if_empty) {
+    SloppyTNode<IntPtrT> size, SloppyTNode<Map> array_map, Label* if_empty) {
   CSA_ASSERT(this, IsFixedArray(result));
   CSA_ASSERT(this, IsJSArrayMap(array_map));
 
   GotoIf(WordEqual(size, IntPtrConstant(0)), if_empty);
-  CSA_ASSERT(this, IntPtrGreaterThanOrEqual(initial_size, size));
   Node* array_length = SmiTag(size);
   Node* array = AllocateUninitializedJSArrayWithoutElements(
       array_map, array_length, nullptr);
-  Label if_should_shrink(this), done(this);
-  Branch(WordNotEqual(initial_size, size), &if_should_shrink, &done);
-
-  BIND(&if_should_shrink);
-  CallRuntime(Runtime::kShrinkFixedArray, context, result, array_length);
-  Goto(&done);
-
-  BIND(&done);
   StoreObjectField(array, JSArray::kElementsOffset, result);
-  CSA_ASSERT(this, SmiEqual(LoadObjectField(result, FixedArray::kLengthOffset),
-                            array_length));
   return TNode<FixedArray>::UncheckedCast(array);
 }
 
@@ -447,9 +473,9 @@ TF_BUILTIN(ObjectKeys, ObjectBuiltinsAssembler) {
   BIND(&if_fast);
   {
     // The {object} has a usable enum cache, use that.
-    Node* object_descriptors = LoadMapDescriptors(object_map);
+    Node* descriptors = LoadMapDescriptors(object_map);
     Node* object_enum_cache =
-        LoadObjectField(object_descriptors, DescriptorArray::kEnumCacheOffset);
+        LoadObjectField(descriptors, DescriptorArray::kEnumCacheOffset);
     Node* object_enum_keys =
         LoadObjectField(object_enum_cache, EnumCache::kKeysOffset);
 

@@ -4300,6 +4300,23 @@ Node* CodeStubAssembler::IsPropertyCell(Node* object) {
   return IsPropertyCellMap(LoadMap(object));
 }
 
+TNode<BoolT> CodeStubAssembler::IsPropertyEnumerable(
+    SloppyTNode<Int32T> details) {
+  Node* attributes =
+    DecodeWord32<PropertyDetails::AttributesField>(details);
+  Node* dont_enum = Int32Constant(PropertyAttributes::DONT_ENUM);
+  return WordEqual(WordAnd(attributes, dont_enum), IntPtrConstant(0));
+}
+
+TNode<BoolT> CodeStubAssembler::IsPropertyKindAccessor(
+    SloppyTNode<Uint32T> kind) {
+  return Word32Equal(kind, Int32Constant(PropertyKind::kAccessor));
+}
+
+TNode<BoolT> CodeStubAssembler::IsPropertyKindData(SloppyTNode<Uint32T> kind) {
+  return Word32Equal(kind, Int32Constant(PropertyKind::kData));
+}
+
 Node* CodeStubAssembler::IsAccessorInfo(Node* object) {
   return IsAccessorInfoMap(LoadMap(object));
 }
@@ -6419,6 +6436,15 @@ Node* CodeStubAssembler::DescriptorArrayGetKey(Node* descriptors,
                                key_offset);
 }
 
+Node* CodeStubAssembler::DescriptorArrayGetValue(
+    SloppyTNode<DescriptorArray> descriptors,
+    SloppyTNode<Int32T> descriptor_number) {
+  const int key_offset = DescriptorArray::ToValueIndex(0) * kPointerSize;
+  return LoadFixedArrayElement(descriptors,
+                               DescriptorNumberToIndex(this, descriptor_number),
+                               key_offset);
+}
+
 void CodeStubAssembler::DescriptorLookupBinary(Node* unique_name,
                                                Node* descriptors, Node* nof,
                                                Label* if_found,
@@ -6621,6 +6647,15 @@ void CodeStubAssembler::LoadPropertyFromFastObject(Node* object, Node* map,
       LoadDetailsByKeyIndex<DescriptorArray>(descriptors, name_index);
   var_details->Bind(details);
 
+  LoadPropertyFromFastObject(
+      object, map, descriptors, name_index, details, var_value);
+}
+
+void CodeStubAssembler::LoadPropertyFromFastObject(Node* object, Node* map,
+                                                   Node* descriptors,
+                                                   Node* name_index,
+                                                   Node* details,
+                                                   Variable* var_value) {
   Node* location = DecodeWord32<PropertyDetails::LocationField>(details);
 
   Label if_in_field(this), if_in_descriptor(this), done(this);
