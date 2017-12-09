@@ -238,7 +238,7 @@ TNode<FixedArray> ObjectBuiltinsAssembler::FastGetOwnValuesOrEntries(
     // So if object might have accessor,
     // we will remain invalid addresses of FixedArray.
     // Because in that case, we need to jump to runtime call.
-    // So the array filled by the-hole event if enum_cache exists.
+    // So the array filled by the-hole even if enum_cache exists.
     FillFixedArrayWithValue(PACKED_ELEMENTS, var_values_or_entries.value(),
                             IntPtrConstant(0),
                             var_array_size.value(),
