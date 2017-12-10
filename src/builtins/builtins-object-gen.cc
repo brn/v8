@@ -272,7 +272,7 @@ TNode<FixedArray> ObjectBuiltinsAssembler::FastGetOwnValuesOrEntries(
       GotoIf(IsSymbol(next_key), &loop_condition);
       {
         VARIABLE(var_property_index, MachineType::PointerRepresentation());
-        Label if_property_found(this), store_value_or_entry(this);
+        Label if_property_found(this);
         Node* bitfield3 = LoadMapBitField3(map);
 
         DescriptorLookup(next_key, descriptors, bitfield3,
@@ -296,11 +296,7 @@ TNode<FixedArray> ObjectBuiltinsAssembler::FastGetOwnValuesOrEntries(
           LoadPropertyFromFastObject(
               object, map, descriptors, var_property_index.value(), details,
               &var_property_value);
-          Goto(&store_value_or_entry);
-        }
 
-        BIND(&store_value_or_entry);
-        {
           // If kind is "value", append value to properties.
           Node* value = var_property_value.value();
 
