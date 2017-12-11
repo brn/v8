@@ -203,13 +203,16 @@ TNode<FixedArray> ObjectBuiltinsAssembler::FastGetOwnValuesOrEntries(
   Node* has_enum_cache =
     WordNotEqual(object_enum_length, IntPtrConstant(kInvalidEnumCacheSentinel));
 
-  Branch(has_enum_cache, &if_has_enum_cache, if_call_runtime_with_fast_path);
-
   // In case, we found enum_cache in object,
   // we use it as array_length becuase it has same size for
   // Object.(entries/values) result array object length.
   // So object_enum_length use less memory space than
   // NumberOfOwnDescriptorsBits value.
+  // And in case, if enum_cache_not_found,
+  // we call runtime and initialize enum_cache for subsequent call of
+  // CSA fast path.
+  Branch(has_enum_cache, &if_has_enum_cache, if_call_runtime_with_fast_path);
+
   BIND(&if_has_enum_cache);
   {
     GotoIf(WordEqual(object_enum_length,
