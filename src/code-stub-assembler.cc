@@ -6404,26 +6404,23 @@ Node* CodeStubAssembler::DescriptorArrayNumberOfEntries(Node* descriptors) {
       descriptors, IntPtrConstant(DescriptorArray::kDescriptorLengthIndex));
 }
 
-namespace {
-
-Node* DescriptorNumberToIndex(CodeStubAssembler* a, Node* descriptor_number) {
-  Node* descriptor_size = a->Int32Constant(DescriptorArray::kEntrySize);
-  Node* index = a->Int32Mul(descriptor_number, descriptor_size);
-  return a->ChangeInt32ToIntPtr(index);
+Node* CodeStubAssembler::DescriptorNumberToIndex(
+    SloppyTNode<Uint32T> descriptor_number) {
+  Node* descriptor_size = Int32Constant(DescriptorArray::kEntrySize);
+  Node* index = Int32Mul(descriptor_number, descriptor_size);
+  return ChangeInt32ToIntPtr(index);
 }
-
-}  // namespace
 
 Node* CodeStubAssembler::DescriptorArrayToKeyIndex(Node* descriptor_number) {
   return IntPtrAdd(IntPtrConstant(DescriptorArray::ToKeyIndex(0)),
-                   DescriptorNumberToIndex(this, descriptor_number));
+                   DescriptorNumberToIndex(descriptor_number));
 }
 
 Node* CodeStubAssembler::DescriptorArrayGetSortedKeyIndex(
     Node* descriptors, Node* descriptor_number) {
   const int details_offset = DescriptorArray::ToDetailsIndex(0) * kPointerSize;
   Node* details = LoadAndUntagToWord32FixedArrayElement(
-      descriptors, DescriptorNumberToIndex(this, descriptor_number),
+      descriptors, DescriptorNumberToIndex(descriptor_number),
       details_offset);
   return DecodeWord32<PropertyDetails::DescriptorPointer>(details);
 }
@@ -6432,16 +6429,24 @@ Node* CodeStubAssembler::DescriptorArrayGetKey(Node* descriptors,
                                                Node* descriptor_number) {
   const int key_offset = DescriptorArray::ToKeyIndex(0) * kPointerSize;
   return LoadFixedArrayElement(descriptors,
-                               DescriptorNumberToIndex(this, descriptor_number),
+                               DescriptorNumberToIndex(descriptor_number),
                                key_offset);
+}
+
+Node* CodeStubAssembler::DescriptorArrayGetDetails(
+    Node* descriptors, Node* descriptor_number) {
+  const int details_offset = DescriptorArray::ToDetailsIndex(0) * kPointerSize;
+  return LoadFixedArrayElement(
+      descriptors, DescriptorNumberToIndex(descriptor_number),
+      details_offset);
 }
 
 Node* CodeStubAssembler::DescriptorArrayGetValue(
     SloppyTNode<DescriptorArray> descriptors,
-    SloppyTNode<Int32T> descriptor_number) {
+    SloppyTNode<Uint32T> descriptor_number) {
   const int key_offset = DescriptorArray::ToValueIndex(0) * kPointerSize;
   return LoadFixedArrayElement(descriptors,
-                               DescriptorNumberToIndex(this, descriptor_number),
+                               DescriptorNumberToIndex(descriptor_number),
                                key_offset);
 }
 

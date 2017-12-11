@@ -1907,6 +1907,7 @@ class V8_EXPORT_PRIVATE CodeStubAssembler : public compiler::CodeAssembler {
   void DescriptorLookupBinary(Node* unique_name, Node* descriptors, Node* nof,
                               Label* if_found, Variable* var_name_index,
                               Label* if_not_found);
+  Node* DescriptorNumberToIndex(SloppyTNode<Uint32T> descriptor_number);
   // Implements DescriptorArray::ToKeyIndex.
   // Returns an untagged IntPtr.
   Node* DescriptorArrayToKeyIndex(Node* descriptor_number);
@@ -1915,7 +1916,9 @@ class V8_EXPORT_PRIVATE CodeStubAssembler : public compiler::CodeAssembler {
   // Implements DescriptorArray::GetValue.
   Node* DescriptorArrayGetValue(
       SloppyTNode<DescriptorArray> descriptors,
-      SloppyTNode<Int32T> index);
+      SloppyTNode<Uint32T> index);
+  // Implements DescriptorArray::GetKey.
+  Node* DescriptorArrayGetDetails(Node* descriptors, Node* descriptor_number);
 
   Node* CallGetterIfAccessor(Node* value, Node* details, Node* context,
                              Node* receiver, Label* if_bailout,
