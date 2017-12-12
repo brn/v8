@@ -1914,9 +1914,8 @@ class V8_EXPORT_PRIVATE CodeStubAssembler : public compiler::CodeAssembler {
   // Implements DescriptorArray::GetKey.
   Node* DescriptorArrayGetKey(Node* descriptors, Node* descriptor_number);
   // Implements DescriptorArray::GetValue.
-  Node* DescriptorArrayGetValue(
-      SloppyTNode<DescriptorArray> descriptors,
-      SloppyTNode<Uint32T> index);
+  Node* DescriptorArrayGetValue(SloppyTNode<DescriptorArray> descriptors,
+                                SloppyTNode<Uint32T> index);
   // Implements DescriptorArray::GetKey.
   Node* DescriptorArrayGetDetails(Node* descriptors, Node* descriptor_number);
 

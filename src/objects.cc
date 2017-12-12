@@ -8802,7 +8802,7 @@ MaybeHandle<FixedArray> GetOwnValuesOrEntries(Isolate* isolate,
   }
 
   PropertyFilter key_filter =
-    static_cast<PropertyFilter>(filter & ~ONLY_ENUMERABLE);
+      static_cast<PropertyFilter>(filter & ~ONLY_ENUMERABLE);
 
   Handle<FixedArray> keys;
   ASSIGN_RETURN_ON_EXCEPTION_VALUE(
