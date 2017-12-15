@@ -273,8 +273,9 @@ TNode<JSArray> ObjectBuiltinsAssembler::FastGetOwnValuesOrEntries(
       // Currently, we will not invoke getters,
       // so, map will not be changed.
       CSA_ASSERT(this, WordEqual(map, LoadMap(object)));
-      Node* descriptor_index =
-          TruncateWordToWord32(var_descriptor_index.value());
+      TNode<Uint32T> descriptor_index =
+        TNode<Uint32T>::UncheckedCast(
+            TruncateWordToWord32(var_descriptor_index.value()));
       Node* next_key = DescriptorArrayGetKey(descriptors, descriptor_index);
 
       // Skip Symbols.

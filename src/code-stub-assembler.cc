@@ -6409,18 +6409,10 @@ Node* CodeStubAssembler::DescriptorArrayGetKey(Node* descriptors,
 }
 
 TNode<Uint32T> CodeStubAssembler::DescriptorArrayGetDetails(
-    Node* descriptors, Node* descriptor_number) {
+    TNode<DescriptorArray> descriptors, TNode<Uint32T> descriptor_number) {
   const int details_offset = DescriptorArray::ToDetailsIndex(0) * kPointerSize;
   return TNode<Uint32T>::UncheckedCast(LoadAndUntagToWord32FixedArrayElement(
       descriptors, DescriptorNumberToIndex(descriptor_number), details_offset));
-}
-
-Node* CodeStubAssembler::DescriptorArrayGetValue(
-    SloppyTNode<DescriptorArray> descriptors,
-    SloppyTNode<Uint32T> descriptor_number) {
-  const int key_offset = DescriptorArray::ToValueIndex(0) * kPointerSize;
-  return LoadFixedArrayElement(
-      descriptors, DescriptorNumberToIndex(descriptor_number), key_offset);
 }
 
 void CodeStubAssembler::DescriptorLookupBinary(Node* unique_name,

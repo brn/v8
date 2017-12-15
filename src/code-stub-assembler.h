@@ -1910,12 +1910,9 @@ class V8_EXPORT_PRIVATE CodeStubAssembler : public compiler::CodeAssembler {
   Node* DescriptorArrayToKeyIndex(Node* descriptor_number);
   // Implements DescriptorArray::GetKey.
   Node* DescriptorArrayGetKey(Node* descriptors, Node* descriptor_number);
-  // Implements DescriptorArray::GetValue.
-  Node* DescriptorArrayGetValue(SloppyTNode<DescriptorArray> descriptors,
-                                SloppyTNode<Uint32T> index);
   // Implements DescriptorArray::GetKey.
-  TNode<Uint32T> DescriptorArrayGetDetails(Node* descriptors,
-                                           Node* descriptor_number);
+  TNode<Uint32T> DescriptorArrayGetDetails(TNode<DescriptorArray> descriptors,
+                                           TNode<Uint32T> descriptor_number);
 
   Node* CallGetterIfAccessor(Node* value, Node* details, Node* context,
                              Node* receiver, Label* if_bailout,
