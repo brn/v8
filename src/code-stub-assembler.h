@@ -1110,17 +1110,15 @@ class V8_EXPORT_PRIVATE CodeStubAssembler : public compiler::CodeAssembler {
   Node* IsPrivateSymbol(Node* object);
   Node* IsPropertyArray(Node* object);
   Node* IsPropertyCell(Node* object);
-  TNode<BoolT> IsPropertyEnumerable(SloppyTNode<Int32T> details);
-  TNode<BoolT> IsPropertyKindAccessor(SloppyTNode<Uint32T> kind);
-  TNode<BoolT> IsPropertyKindData(SloppyTNode<Uint32T> kind);
+  TNode<BoolT> IsPropertyEnumerable(TNode<Uint32T> details);
+  TNode<BoolT> IsPropertyKindAccessor(TNode<Uint32T> kind);
+  TNode<BoolT> IsPropertyKindData(TNode<Uint32T> kind);
   Node* IsPrototypeInitialArrayPrototype(Node* context, Node* map);
   Node* IsSequentialStringInstanceType(Node* instance_type);
   Node* IsShortExternalStringInstanceType(Node* instance_type);
   Node* IsSpecialReceiverInstanceType(Node* instance_type);
-  Node* IsSpecialReceiverMap(Node* map);
   Node* IsSpeciesProtectorCellInvalid();
   Node* IsStringInstanceType(Node* instance_type);
-  Node* IsStringWrapperElementsKind(SloppyTNode<Map> map);
   Node* IsString(Node* object);
   Node* IsSymbolInstanceType(Node* instance_type);
   Node* IsSymbol(Node* object);
@@ -1450,7 +1448,7 @@ class V8_EXPORT_PRIVATE CodeStubAssembler : public compiler::CodeAssembler {
                            kKeyToValueOffset);
   }
 
-  TNode<Uint32T> LoadPropertyKind(SloppyTNode<Int32T> details) {
+  TNode<Uint32T> LoadPropertyKind(TNode<Uint32T> details) {
     return DecodeWord32<PropertyDetails::KindField>(details);
   }
 
@@ -1652,7 +1650,7 @@ class V8_EXPORT_PRIVATE CodeStubAssembler : public compiler::CodeAssembler {
   // chain, otherwise false is returned. Might cause arbitrary side effects
   // due to [[GetPrototypeOf]] invocations.
   Node* HasInPrototypeChain(Node* context, Node* object, Node* prototype);
-  Node* HasHiddenPrototype(SloppyTNode<Map> map);
+
   // ES6 section 7.3.19 OrdinaryHasInstance (C, O)
   Node* OrdinaryHasInstance(Node* context, Node* callable, Node* object);
 
@@ -1917,7 +1915,8 @@ class V8_EXPORT_PRIVATE CodeStubAssembler : public compiler::CodeAssembler {
   Node* DescriptorArrayGetValue(SloppyTNode<DescriptorArray> descriptors,
                                 SloppyTNode<Uint32T> index);
   // Implements DescriptorArray::GetKey.
-  Node* DescriptorArrayGetDetails(Node* descriptors, Node* descriptor_number);
+  TNode<Uint32T> DescriptorArrayGetDetails(Node* descriptors,
+                                           Node* descriptor_number);
 
   Node* CallGetterIfAccessor(Node* value, Node* details, Node* context,
                              Node* receiver, Label* if_bailout,
