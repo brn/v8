@@ -338,7 +338,9 @@ Handle<FixedArray> GetFastEnumPropertyKeys(Isolate* isolate,
     DCHECK_EQ(index, indices->length());
   }
 
-  DescriptorArray::SetEnumCache(descriptors, isolate, keys, indices);
+  DescriptorArray::SetEnumCache(
+      descriptors, isolate,
+      isolate->factory()->CopyAndTenureFixedCOWArray(keys), indices);
   if (map->OnlyHasSimpleProperties()) map->SetEnumLength(enum_length);
 
   return keys;

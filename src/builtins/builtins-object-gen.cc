@@ -225,17 +225,29 @@ TF_BUILTIN(ObjectKeys, ObjectBuiltinsAssembler) {
         LoadObjectField(object_enum_cache, EnumCache::kKeysOffset);
 
     // Allocate a JSArray and copy the elements from the {object_enum_keys}.
-    Node* array = nullptr;
-    Node* elements = nullptr;
     Node* native_context = LoadNativeContext(context);
     Node* array_map = LoadJSArrayElementsMap(PACKED_ELEMENTS, native_context);
     Node* array_length = SmiTag(object_enum_length);
-    std::tie(array, elements) = AllocateUninitializedJSArrayWithElements(
-        PACKED_ELEMENTS, array_map, array_length, nullptr, object_enum_length,
-        INTPTR_PARAMETERS);
-    CopyFixedArrayElements(PACKED_ELEMENTS, object_enum_keys, elements,
-                           object_enum_length, SKIP_WRITE_BARRIER);
+    Node* array = AllocateUninitializedJSArrayWithoutElements(
+        array_map, array_length, nullptr);
+    StoreObjectFieldNoWriteBarrier(
+        array, JSArray::kElementsOffset, object_enum_keys);
     Return(array);
+
+    // Node* object_descriptors = LoadMapDescriptors(object_map);
+    // Node* object_enum_cache =
+    // LoadObjectField(object_descriptors, DescriptorArray::kEnumCacheOffset);
+    // Node* object_enum_keys =
+    //     LoadObjectField(object_enum_cache, EnumCache::kKeysOffset);
+
+    // // Allocate a JSArray and copy the elements from the {object_enum_keys}.
+    // Node* native_context = LoadNativeContext(context);
+    // Node* array_map = FixedCOWArrayMapConstant();
+    // Node* array_length = SmiTag(object_enum_length);
+    // Node* array = AllocateUninitializedJSArrayWithoutElements(
+    //     array_map, array_length, nullptr);
+    // StoreObjectFieldNoWriteBarrier(
+    //     array, JSArray::kElementsOffset, object_enum_keys);
   }
 
   BIND(&if_empty);
