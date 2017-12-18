@@ -40,7 +40,7 @@ class ObjectBuiltinsAssembler : public CodeStubAssembler {
   Node* IsSpecialReceiverMap(SloppyTNode<Map> map);
 };
 
-class ObjectEntriesValuesBuiltinsAssembler: public ObjectBuiltinsAssembler {
+class ObjectEntriesValuesBuiltinsAssembler : public ObjectBuiltinsAssembler {
  public:
   explicit ObjectEntriesValuesBuiltinsAssembler(
       compiler::CodeAssemblerState* state)
@@ -53,8 +53,7 @@ class ObjectEntriesValuesBuiltinsAssembler: public ObjectBuiltinsAssembler {
 
   TNode<Uint32T> HasHiddenPrototype(TNode<Map> map);
 
-  void GetOwnValuesOrEntries(TNode<Context> context,
-                             TNode<Object> maybe_object,
+  void GetOwnValuesOrEntries(TNode<Context> context, TNode<Object> maybe_object,
                              CollectType collect_type);
 
   void GotoIfMapHasSlowProperties(TNode<Map> map, Label* if_slow);
@@ -152,8 +151,8 @@ ObjectEntriesValuesBuiltinsAssembler::IsStringWrapperElementsKind(
       Word32Equal(kind, Int32Constant(SLOW_STRING_WRAPPER_ELEMENTS)));
 }
 
-TNode<Uint32T>
-ObjectEntriesValuesBuiltinsAssembler::HasHiddenPrototype(TNode<Map> map) {
+TNode<Uint32T> ObjectEntriesValuesBuiltinsAssembler::HasHiddenPrototype(
+    TNode<Map> map) {
   TNode<Uint32T> bit_field3 = LoadMapBitField3(map);
   return DecodeWord32<Map::HasHiddenPrototypeBit>(bit_field3);
 }
@@ -272,8 +271,8 @@ TNode<JSArray> ObjectEntriesValuesBuiltinsAssembler::FastGetOwnValuesOrEntries(
     // Let desc be ? O.[[GetOwnProperty]](key).
     TNode<DescriptorArray> descriptors = LoadMapDescriptors(map);
     Label loop(this, 2, vars), after_loop(this), loop_condition(this);
-    Branch(IntPtrEqual(var_descriptor_index, object_enum_length),
-           &after_loop, &loop);
+    Branch(IntPtrEqual(var_descriptor_index, object_enum_length), &after_loop,
+           &loop);
 
     // We dont use BuildFastLoop.
     // Instead, we use hand-written loop
@@ -283,9 +282,8 @@ TNode<JSArray> ObjectEntriesValuesBuiltinsAssembler::FastGetOwnValuesOrEntries(
       // Currently, we will not invoke getters,
       // so, map will not be changed.
       CSA_ASSERT(this, WordEqual(map, LoadMap(object)));
-      TNode<Uint32T> descriptor_index =
-        TNode<Uint32T>::UncheckedCast(
-            TruncateWordToWord32(var_descriptor_index));
+      TNode<Uint32T> descriptor_index = TNode<Uint32T>::UncheckedCast(
+          TruncateWordToWord32(var_descriptor_index));
       Node* next_key = DescriptorArrayGetKey(descriptors, descriptor_index);
 
       // Skip Symbols.
@@ -326,8 +324,7 @@ TNode<JSArray> ObjectEntriesValuesBuiltinsAssembler::FastGetOwnValuesOrEntries(
         value = array;
       }
 
-      StoreFixedArrayElement(values_or_entries, var_result_index,
-                             value);
+      StoreFixedArrayElement(values_or_entries, var_result_index, value);
       Increment(&var_result_index, 1);
       Goto(&loop_condition);
 
@@ -339,10 +336,9 @@ TNode<JSArray> ObjectEntriesValuesBuiltinsAssembler::FastGetOwnValuesOrEntries(
       }
     }
     BIND(&after_loop);
-    return FinalizeValuesOrEntriesJSArray(
-        context, values_or_entries,
-        var_result_index, array_map,
-        if_no_properties);
+    return FinalizeValuesOrEntriesJSArray(context, values_or_entries,
+                                          var_result_index, array_map,
+                                          if_no_properties);
   }
 }
 
