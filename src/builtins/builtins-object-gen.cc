@@ -53,6 +53,10 @@ class ObjectEntriesValuesBuiltinsAssembler : public ObjectBuiltinsAssembler {
 
   TNode<Uint32T> HasHiddenPrototype(TNode<Map> map);
 
+  TNode<Uint32T> LoadPropertyKind(TNode<Uint32T> details) {
+    return DecodeWord32<PropertyDetails::KindField>(details);
+  }
+
   void GetOwnValuesOrEntries(TNode<Context> context, TNode<Object> maybe_object,
                              CollectType collect_type);
 
@@ -289,8 +293,8 @@ TNode<JSArray> ObjectEntriesValuesBuiltinsAssembler::FastGetOwnValuesOrEntries(
       // Skip Symbols.
       GotoIf(IsSymbol(next_key), &loop_condition);
 
-      TNode<Uint32T> details =
-          DescriptorArrayGetDetails(descriptors, descriptor_index);
+      TNode<Uint32T> details = TNode<Uint32T>::UncheckedCast(
+          DescriptorArrayGetSortedKeyIndex(descriptors, descriptor_index));
       TNode<Uint32T> kind = LoadPropertyKind(details);
 
       // If property is accessor, we escape fast path and call runtime.
