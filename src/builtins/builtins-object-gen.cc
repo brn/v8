@@ -317,7 +317,7 @@ TNode<JSArray> ObjectEntriesValuesBuiltinsAssembler::FastGetOwnValuesOrEntries(
       GotoIf(IsSymbol(next_key), &loop_condition);
 
       TNode<Uint32T> details = TNode<Uint32T>::UncheckedCast(
-          DescriptorArrayGetSortedKeyIndex(descriptors, descriptor_index));
+          DescriptorArrayGetDetails(descriptors, descriptor_index));
       TNode<Uint32T> kind = LoadPropertyKind(details);
 
       // If property is accessor, we escape fast path and call runtime.

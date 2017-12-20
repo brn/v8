@@ -6381,9 +6381,7 @@ Node* CodeStubAssembler::DescriptorArrayToKeyIndex(Node* descriptor_number) {
 
 Node* CodeStubAssembler::DescriptorArrayGetSortedKeyIndex(
     Node* descriptors, Node* descriptor_number) {
-  const int details_offset = DescriptorArray::ToDetailsIndex(0) * kPointerSize;
-  Node* details = LoadAndUntagToWord32FixedArrayElement(
-      descriptors, DescriptorNumberToIndex(descriptor_number), details_offset);
+  Node* details = DescriptorArrayGetDetails(descriptors, descriptor_number);
   return DecodeWord32<PropertyDetails::DescriptorPointer>(details);
 }
 
@@ -6392,6 +6390,13 @@ Node* CodeStubAssembler::DescriptorArrayGetKey(Node* descriptors,
   const int key_offset = DescriptorArray::ToKeyIndex(0) * kPointerSize;
   return LoadFixedArrayElement(
       descriptors, DescriptorNumberToIndex(descriptor_number), key_offset);
+}
+
+TNode<Uint32T> CodeStubAssembler::DescriptorArrayGetDetails(
+    TNode<DescriptorArray> descriptors, TNode<Uint32T> descriptor_number) {
+  const int details_offset = DescriptorArray::ToDetailsIndex(0) * kPointerSize;
+  return TNode<Uint32T>::UncheckedCast(LoadAndUntagToWord32FixedArrayElement(
+      descriptors, DescriptorNumberToIndex(descriptor_number), details_offset));
 }
 
 void CodeStubAssembler::DescriptorLookupBinary(Node* unique_name,

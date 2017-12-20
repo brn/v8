@@ -1903,10 +1903,9 @@ class V8_EXPORT_PRIVATE CodeStubAssembler : public compiler::CodeAssembler {
   Node* DescriptorArrayToKeyIndex(Node* descriptor_number);
   // Implements DescriptorArray::GetKey.
   Node* DescriptorArrayGetKey(Node* descriptors, Node* descriptor_number);
-  // Implements DescriptorArray::GetSortedKeyIndex.
-  // Returns an untagged int32.
-  Node* DescriptorArrayGetSortedKeyIndex(Node* descriptors,
-                                         Node* descriptor_number);
+  // Implements DescriptorArray::GetKey.
+  TNode<Uint32T> DescriptorArrayGetDetails(TNode<DescriptorArray> descriptors,
+                                           TNode<Uint32T> descriptor_number);
 
   Node* CallGetterIfAccessor(Node* value, Node* details, Node* context,
                              Node* receiver, Label* if_bailout,
@@ -1955,6 +1954,10 @@ class V8_EXPORT_PRIVATE CodeStubAssembler : public compiler::CodeAssembler {
   // Implements DescriptorArray::number_of_entries.
   // Returns an untagged int32.
   Node* DescriptorArrayNumberOfEntries(Node* descriptors);
+  // Implements DescriptorArray::GetSortedKeyIndex.
+  // Returns an untagged int32.
+  Node* DescriptorArrayGetSortedKeyIndex(Node* descriptors,
+                                         Node* descriptor_number);
 
   Node* CollectFeedbackForString(Node* instance_type);
   void GenerateEqual_Same(Node* value, Label* if_equal, Label* if_notequal,
