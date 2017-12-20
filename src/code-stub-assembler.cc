@@ -6381,7 +6381,9 @@ Node* CodeStubAssembler::DescriptorArrayToKeyIndex(Node* descriptor_number) {
 
 Node* CodeStubAssembler::DescriptorArrayGetSortedKeyIndex(
     Node* descriptors, Node* descriptor_number) {
-  Node* details = DescriptorArrayGetDetails(descriptors, descriptor_number);
+  Node* details = DescriptorArrayGetDetails(
+      TNode<DescriptorArray>::UncheckedCast(descriptors),
+      TNode<Uint32T>::UncheckedCast(descriptor_number));
   return DecodeWord32<PropertyDetails::DescriptorPointer>(details);
 }
 
