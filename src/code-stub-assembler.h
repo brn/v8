@@ -1110,9 +1110,6 @@ class V8_EXPORT_PRIVATE CodeStubAssembler : public compiler::CodeAssembler {
   Node* IsPrivateSymbol(Node* object);
   Node* IsPropertyArray(Node* object);
   Node* IsPropertyCell(Node* object);
-  TNode<BoolT> IsPropertyEnumerable(TNode<Uint32T> details);
-  TNode<BoolT> IsPropertyKindAccessor(TNode<Uint32T> kind);
-  TNode<BoolT> IsPropertyKindData(TNode<Uint32T> kind);
   Node* IsPrototypeInitialArrayPrototype(Node* context, Node* map);
   Node* IsSequentialStringInstanceType(Node* instance_type);
   Node* IsShortExternalStringInstanceType(Node* instance_type);

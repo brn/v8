@@ -4287,20 +4287,6 @@ Node* CodeStubAssembler::IsPropertyCell(Node* object) {
   return IsPropertyCellMap(LoadMap(object));
 }
 
-TNode<BoolT> CodeStubAssembler::IsPropertyEnumerable(TNode<Uint32T> details) {
-  TNode<Uint32T> attributes =
-      DecodeWord32<PropertyDetails::AttributesField>(details);
-  return IsNotSetWord32(attributes, PropertyAttributes::DONT_ENUM);
-}
-
-TNode<BoolT> CodeStubAssembler::IsPropertyKindAccessor(TNode<Uint32T> kind) {
-  return Word32Equal(kind, Int32Constant(PropertyKind::kAccessor));
-}
-
-TNode<BoolT> CodeStubAssembler::IsPropertyKindData(TNode<Uint32T> kind) {
-  return Word32Equal(kind, Int32Constant(PropertyKind::kData));
-}
-
 Node* CodeStubAssembler::IsAccessorInfo(Node* object) {
   return IsAccessorInfoMap(LoadMap(object));
 }

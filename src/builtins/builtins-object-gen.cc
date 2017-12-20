@@ -51,6 +51,12 @@ class ObjectEntriesValuesBuiltinsAssembler : public ObjectBuiltinsAssembler {
 
   TNode<Word32T> IsStringWrapperElementsKind(TNode<Map> map);
 
+  TNode<BoolT> IsPropertyEnumerable(TNode<Uint32T> details);
+
+  TNode<BoolT> IsPropertyKindAccessor(TNode<Uint32T> kind);
+
+  TNode<BoolT> IsPropertyKindData(TNode<Uint32T> kind);
+
   TNode<Uint32T> HasHiddenPrototype(TNode<Map> map);
 
   TNode<Uint32T> LoadPropertyKind(TNode<Uint32T> details) {
@@ -153,6 +159,23 @@ ObjectEntriesValuesBuiltinsAssembler::IsStringWrapperElementsKind(
   return Word32Or(
       Word32Equal(kind, Int32Constant(FAST_STRING_WRAPPER_ELEMENTS)),
       Word32Equal(kind, Int32Constant(SLOW_STRING_WRAPPER_ELEMENTS)));
+}
+
+TNode<BoolT> ObjectEntriesValuesBuiltinsAssembler::IsPropertyEnumerable(
+    TNode<Uint32T> details) {
+  TNode<Uint32T> attributes =
+      DecodeWord32<PropertyDetails::AttributesField>(details);
+  return IsNotSetWord32(attributes, PropertyAttributes::DONT_ENUM);
+}
+
+TNode<BoolT> ObjectEntriesValuesBuiltinsAssembler::IsPropertyKindAccessor(
+    TNode<Uint32T> kind) {
+  return Word32Equal(kind, Int32Constant(PropertyKind::kAccessor));
+}
+
+TNode<BoolT> ObjectEntriesValuesBuiltinsAssembler::IsPropertyKindData(
+    TNode<Uint32T> kind) {
+  return Word32Equal(kind, Int32Constant(PropertyKind::kData));
 }
 
 TNode<Uint32T> ObjectEntriesValuesBuiltinsAssembler::HasHiddenPrototype(
