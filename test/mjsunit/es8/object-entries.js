@@ -19,7 +19,7 @@ function TestMeta() {
 TestMeta();
 
 
-function TestBasic() {
+function TestBasic(isWarmup) {
   var x = 16;
   var O = {
     d: 1,
@@ -33,6 +33,9 @@ function TestBasic() {
   O.a = 2;
   O.b = 4;
   Object.defineProperty(O, "HIDDEN", { enumerable: false, value: NaN });
+  if (isWarmup) {
+    for (var key in O) {}
+  }
   assertEquals([
     ["0", 123],
     ["256", "ducks"],
@@ -49,6 +52,7 @@ function TestBasic() {
   assertEquals(0, Object.entries({}).length);
 }
 TestBasic();
+TestBasic(true);
 
 
 function TestToObject() {
@@ -59,7 +63,7 @@ function TestToObject() {
 TestToObject();
 
 
-function TestOrder() {
+function TestOrder(isWarmup) {
   var O = {
     a: 1,
     [Symbol.iterator]: null
@@ -88,20 +92,41 @@ function TestOrder() {
     }
   });
 
+  if (isWarmup) {
+    for (var key in P) {}
+  }
+
   assertEquals([["456", 123], ["a", 1]], Object.entries(P));
-  assertEquals([
-    "[[OwnPropertyKeys]]",
-    "[[GetOwnProperty]](\"456\")",
-    "[[Get]](\"456\")",
-    "[[GetOwnProperty]](\"a\")",
-    "[[Get]](\"a\")",
-    "[[GetOwnProperty]](\"HIDDEN\")"
-  ], log);
+  if (isWarmup) {
+    // CSA get all properties and switchs to runtime.
+    assertEquals([
+      "[[OwnPropertyKeys]]",
+      "[[GetOwnProperty]](\"456\")",
+      "[[GetOwnProperty]](\"a\")",
+      "[[GetOwnProperty]](\"HIDDEN\")",
+      "[[OwnPropertyKeys]]",
+      "[[GetOwnProperty]](\"456\")",
+      "[[Get]](\"456\")",
+      "[[GetOwnProperty]](\"a\")",
+      "[[Get]](\"a\")",
+      "[[GetOwnProperty]](\"HIDDEN\")"
+    ], log);
+  } else {
+    assertEquals([
+      "[[OwnPropertyKeys]]",
+      "[[GetOwnProperty]](\"456\")",
+      "[[Get]](\"456\")",
+      "[[GetOwnProperty]](\"a\")",
+      "[[Get]](\"a\")",
+      "[[GetOwnProperty]](\"HIDDEN\")"
+    ], log);
+  }
 }
 TestOrder();
+TestOrder(true);
 
 
-function TestOrderWithDuplicates() {
+function TestOrderWithDuplicates(isWarmup) {
   var O = {
     a: 1,
     [Symbol.iterator]: null
@@ -130,30 +155,65 @@ function TestOrderWithDuplicates() {
     }
   });
 
+  if (isWarmup) {
+    for (var key in P) {}
+  }
+
   assertEquals([
     ["a", 1],
     ["a", 1],
     ["456", 123],
     ["456", 123]
   ], Object.entries(P));
-  assertEquals([
-    "[[OwnPropertyKeys]]",
-    "[[GetOwnProperty]](\"a\")",
-    "[[Get]](\"a\")",
-    "[[GetOwnProperty]](\"a\")",
-    "[[Get]](\"a\")",
-    "[[GetOwnProperty]](\"456\")",
-    "[[Get]](\"456\")",
-    "[[GetOwnProperty]](\"HIDDEN\")",
-    "[[GetOwnProperty]](\"HIDDEN\")",
-    "[[GetOwnProperty]](\"456\")",
-    "[[Get]](\"456\")"
-  ], log);
+  if (isWarmup) {
+    assertEquals([
+      "[[OwnPropertyKeys]]",
+      "[[GetOwnProperty]](\"a\")",
+      "[[GetOwnProperty]](\"456\")",
+      "[[GetOwnProperty]](\"HIDDEN\")",
+      "[[OwnPropertyKeys]]",
+      "[[GetOwnProperty]](\"a\")",
+      "[[Get]](\"a\")",
+      "[[GetOwnProperty]](\"a\")",
+      "[[Get]](\"a\")",
+      "[[GetOwnProperty]](\"456\")",
+      "[[Get]](\"456\")",
+      "[[GetOwnProperty]](\"HIDDEN\")",
+      "[[GetOwnProperty]](\"HIDDEN\")",
+      "[[GetOwnProperty]](\"456\")",
+      "[[Get]](\"456\")"
+    ], log);
+  } else {
+    assertEquals([
+      "[[OwnPropertyKeys]]",
+      "[[GetOwnProperty]](\"a\")",
+      "[[Get]](\"a\")",
+      "[[GetOwnProperty]](\"a\")",
+      "[[Get]](\"a\")",
+      "[[GetOwnProperty]](\"456\")",
+      "[[Get]](\"456\")",
+      "[[GetOwnProperty]](\"HIDDEN\")",
+      "[[GetOwnProperty]](\"HIDDEN\")",
+      "[[GetOwnProperty]](\"456\")",
+      "[[Get]](\"456\")"
+    ], log);
+  }
 }
 TestOrderWithDuplicates();
+TestOrderWithDuplicates(true);
 
+function TestDescriptorProperty() {
+  function f() {};
+  const o = {};
+  o.a = f;
 
-function TestPropertyFilter() {
+  for (var key in o) {};
+  const entries = Object.entries(o);
+  assertEquals([['a', f]], entries);
+}
+TestDescriptorProperty();
+
+function TestPropertyFilter(isWarmup) {
   var object = { prop3: 30 };
   object[2] = 40;
   object["prop4"] = 50;
@@ -163,6 +223,10 @@ function TestPropertyFilter() {
       enumerable: true, get() { return 80; }});
   var sym = Symbol("prop8");
   object[sym] = 90;
+
+  if (isWarmup) {
+    for (var key in object) {}
+  }
 
   values = Object.entries(object);
   assertEquals(5, values.length);
@@ -175,11 +239,15 @@ function TestPropertyFilter() {
   ], values);
 }
 TestPropertyFilter();
+TestPropertyFilter(true);
 
 
-function TestWithProxy() {
+function TestWithProxy(isWarmup) {
   var obj1 = {prop1:10};
   var proxy1 = new Proxy(obj1, { });
+  if (isWarmup) {
+    for (const key in proxy1) {}
+  }
   assertEquals([ [ "prop1", 10 ] ], Object.entries(proxy1));
 
   var obj2 = {};
@@ -191,6 +259,9 @@ function TestWithProxy() {
       return Reflect.getOwnPropertyDescriptor(target, name);
     }
   });
+  if (isWarmup) {
+    for (const key in proxy2) {}
+  }
   assertEquals([ [ "prop2", 20 ], [ "prop3", 30 ] ], Object.entries(proxy2));
 
   var obj3 = {};
@@ -206,12 +277,16 @@ function TestWithProxy() {
       return [ "prop0", "prop1", Symbol("prop2"), Symbol("prop5") ];
     }
   });
+  if (isWarmup) {
+    for (const key in proxy3) {}
+  }
   assertEquals([ [ "prop0", 0 ], [ "prop1", 5 ] ], Object.entries(proxy3));
 }
 TestWithProxy();
+TestWithProxy(true);
 
 
-function TestMutateDuringEnumeration() {
+function TestMutateDuringEnumeration(isWarmup) {
   var aDeletesB = {
     get a() {
       delete this.b;
@@ -219,6 +294,9 @@ function TestMutateDuringEnumeration() {
     },
     b: 2
   };
+  if (isWarmup) {
+    for (const key in aDeletesB) {}
+  }
   assertEquals([ [ "a", 1 ] ], Object.entries(aDeletesB));
 
   var aRemovesB = {
@@ -228,9 +306,15 @@ function TestMutateDuringEnumeration() {
     },
     b: 2
   };
+  if (isWarmup) {
+    for (const key in aRemovesB) {}
+  }
   assertEquals([ [ "a", 1 ] ], Object.entries(aRemovesB));
 
   var aAddsB = { get a() { this.b = 2; return 1; } };
+  if (isWarmup) {
+    for (const key in aAddsB) {}
+  }
   assertEquals([ [ "a", 1 ] ], Object.entries(aAddsB));
 
   var aMakesBEnumerable = {};
@@ -243,12 +327,16 @@ function TestMutateDuringEnumeration() {
   });
   Object.defineProperty(aMakesBEnumerable, "b", {
       value: 2, configurable:true, enumerable: false });
+  if (isWarmup) {
+    for (const key in aMakesBEnumerable) {}
+  }
   assertEquals([ [ "a", 1 ], [ "b", 2 ] ], Object.entries(aMakesBEnumerable));
 }
 TestMutateDuringEnumeration();
+TestMutateDuringEnumeration(true);
 
 
-(function TestElementKinds() {
+function TestElementKinds(isWarmup) {
   var O1 = { name: "1" }, O2 = { name: "2" }, O3 = { name: "3" };
   var PI = 3.141592653589793;
   var E = 2.718281828459045;
@@ -303,13 +391,22 @@ TestMutateDuringEnumeration();
         }), [["0", "s"], ["1", "t"], ["2", "r"], ["9999", "Y"]] ],
   };
 
+  if (isWarmup) {
+    for (const key in element_kinds) {}
+  }
   for (let [kind, [object, expected]] of Object.entries(element_kinds)) {
+    if (isWarmup) {
+      for (const key in object) {}
+    }
     let result1 = Object.entries(object);
     %HeapObjectVerify(object);
     %HeapObjectVerify(result1);
     assertEquals(expected, result1, `fast Object.entries() with ${kind}`);
 
     let proxy = new Proxy(object, {});
+    if (isWarmup) {
+      for (const key in proxy) {}
+    }
     let result2 = Object.entries(proxy);
     %HeapObjectVerify(result2);
     assertEquals(result1, result2, `slow Object.entries() with ${kind}`);
@@ -331,9 +428,15 @@ TestMutateDuringEnumeration();
   for (let [kind, [object, expected]] of Object.entries(element_kinds)) {
     if (kind == "FAST_STRING_WRAPPER_ELEMENTS") break;
     object.__defineGetter__(1, makeFastElements);
+    if (isWarmup) {
+      for (const key in object) {}
+    }
     let result1 = Object.entries(object).toString();
     %HeapObjectVerify(object);
     %HeapObjectVerify(result1);
   }
 
-})();
+}
+
+TestElementKinds();
+TestElementKinds(true);
