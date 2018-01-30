@@ -152,6 +152,16 @@ function TestOrderWithDuplicates() {
 }
 TestOrderWithDuplicates();
 
+function TestDescriptorProperty() {
+  function f() {};
+  const o = {};
+  o.a = f;
+
+  for (var key in o) {};
+  const entries = Object.entries(o);
+  assertEquals([['a', f]], entries);
+}
+TestDescriptorProperty();
 
 function TestPropertyFilter() {
   var object = { prop3: 30 };
