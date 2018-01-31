@@ -329,8 +329,8 @@ TNode<JSArray> ObjectEntriesValuesBuiltinsAssembler::FastGetOwnValuesOrEntries(
 
       VARIABLE(var_property_value, MachineRepresentation::kTagged,
                UndefinedConstant());
-      Node* descriptor_name_index =
-          DescriptorArrayToKeyIndex(var_descriptor_number);
+      Node* descriptor_name_index = DescriptorArrayToKeyIndex(
+          TruncateWordToWord32(var_descriptor_number));
 
       // Let value be ? Get(O, key).
       LoadPropertyFromFastObject(object, map, descriptors,
