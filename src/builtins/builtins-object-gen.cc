@@ -293,12 +293,12 @@ TNode<JSArray> ObjectEntriesValuesBuiltinsAssembler::FastGetOwnValuesOrEntries(
                             Heap::kTheHoleValueRootIndex);
 
     TVARIABLE(IntPtrT, var_result_index, IntPtrConstant(0));
-    TVARIABLE(IntPtrT, var_descriptor_index, IntPtrConstant(0));
-    Variable* vars[] = {&var_descriptor_index, &var_result_index};
+    TVARIABLE(IntPtrT, var_descriptor_number, IntPtrConstant(0));
+    Variable* vars[] = {&var_descriptor_number, &var_result_index};
     // Let desc be ? O.[[GetOwnProperty]](key).
     TNode<DescriptorArray> descriptors = LoadMapDescriptors(map);
     Label loop(this, 2, vars), after_loop(this), loop_condition(this);
-    Branch(IntPtrEqual(var_descriptor_index, object_enum_length), &after_loop,
+    Branch(IntPtrEqual(var_descriptor_number, object_enum_length), &after_loop,
            &loop);
 
     // We dont use BuildFastLoop.
@@ -310,7 +310,7 @@ TNode<JSArray> ObjectEntriesValuesBuiltinsAssembler::FastGetOwnValuesOrEntries(
       // so, map will not be changed.
       CSA_ASSERT(this, WordEqual(map, LoadMap(object)));
       TNode<Uint32T> descriptor_index = TNode<Uint32T>::UncheckedCast(
-          TruncateWordToWord32(var_descriptor_index));
+          TruncateWordToWord32(var_descriptor_number));
       Node* next_key = DescriptorArrayGetKey(descriptors, descriptor_index);
 
       // Skip Symbols.
@@ -330,8 +330,7 @@ TNode<JSArray> ObjectEntriesValuesBuiltinsAssembler::FastGetOwnValuesOrEntries(
       VARIABLE(var_property_value, MachineRepresentation::kTagged,
                UndefinedConstant());
       Node* descriptor_name_index =
-          Int32Add(Int32Constant(DescriptorArray::kEntryValueIndex),
-                   DescriptorNumberToIndex(descriptor_index));
+          DescriptorArrayToKeyIndex(var_descriptor_number);
 
       // Let value be ? Get(O, key).
       LoadPropertyFromFastObject(object, map, descriptors,
@@ -359,8 +358,8 @@ TNode<JSArray> ObjectEntriesValuesBuiltinsAssembler::FastGetOwnValuesOrEntries(
 
       BIND(&loop_condition);
       {
-        Increment(&var_descriptor_index, 1);
-        Branch(IntPtrEqual(var_descriptor_index, object_enum_length),
+        Increment(&var_descriptor_number, 1);
+        Branch(IntPtrEqual(var_descriptor_number, object_enum_length),
                &after_loop, &loop);
       }
     }
