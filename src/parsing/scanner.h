@@ -366,6 +366,12 @@ class Scanner {
   void set_allow_harmony_private_fields(bool allow) {
     allow_harmony_private_fields_ = allow;
   }
+  bool allow_harmony_numeric_separator() const {
+    return allow_harmony_numeric_separator_;
+  }
+  void allow_harmony_numeric_separator(bool allow) {
+    allow_harmony_numeric_separator_ = allow;
+  }
 
  private:
   // Scoped helper for saving & restoring scanner error state.
@@ -720,12 +726,15 @@ class Scanner {
   // Scans a possible HTML comment -- begins with '<!'.
   Token::Value ScanHtmlComment();
 
-  void ScanDecimalDigits();
-  bool ScanHexDigits();
-  bool ScanBinaryDigits();
-  bool ScanSignedInteger();
-  bool ScanOctalDigits();
-  bool ScanImplicitOctalDigits(int start_pos);
+  bool ScanDecimalDigits(int start_pos);
+  bool ScanHexDigits(int start_pos);
+  bool ScanBinaryDigits(int start_pos);
+  bool ScanSignedInteger(int start_pos);
+  bool ScanOctalDigits(int start_pos);
+  bool ScanImplicitOctalDigits(int start_pos, bool* is_error);
+
+  bool ScanSeparator(int start_pos, bool* separator_seen);
+  bool ReportIfTrailingSeparatorFound(int start_pos, bool separator_seen);
 
   Token::Value ScanNumber(bool seen_period);
   Token::Value ScanIdentifierOrKeyword();
@@ -817,6 +826,7 @@ class Scanner {
   // Harmony flags to allow ESNext features.
   bool allow_harmony_bigint_;
   bool allow_harmony_private_fields_;
+  bool allow_harmony_numeric_separator_;
 
   MessageTemplate::Template scanner_error_;
   Location scanner_error_location_;

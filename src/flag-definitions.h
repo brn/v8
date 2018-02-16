@@ -208,13 +208,14 @@ DEFINE_IMPLICATION(harmony_class_fields, harmony_private_fields)
 // Update bootstrapper.cc whenever adding a new feature flag.
 
 // Features that are still work in progress (behind individual flags).
-#define HARMONY_INPROGRESS(V)                                         \
-  V(harmony_array_prototype_values, "harmony Array.prototype.values") \
-  V(harmony_function_sent, "harmony function.sent")                   \
-  V(harmony_do_expressions, "harmony do-expressions")                 \
-  V(harmony_class_fields, "harmony fields in class literals")         \
-  V(harmony_static_fields, "harmony static fields in class literals") \
-  V(harmony_bigint, "harmony arbitrary precision integers")
+#define HARMONY_INPROGRESS(V)                                           \
+  V(harmony_array_prototype_values, "harmony Array.prototype.values")   \
+  V(harmony_function_sent, "harmony function.sent")                     \
+  V(harmony_do_expressions, "harmony do-expressions")                   \
+  V(harmony_class_fields, "harmony fields in class literals")           \
+  V(harmony_static_fields, "harmony static fields in class literals")   \
+  V(harmony_bigint, "harmony arbitrary precision integers")             \
+  V(harmony_numeric_separator, "harmony numeric separator between digits")
 
 // Features that are complete (but still behind --harmony/es-staging flag).
 #define HARMONY_STAGED(V)                                               \
