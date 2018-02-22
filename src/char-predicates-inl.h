@@ -48,19 +48,9 @@ inline bool IsDecimalDigit(uc32 c) {
   return IsInRange(c, '0', '9');
 }
 
-inline bool IsDecimalDigitWithSeparator(uc32 c) {
-  // https://tc39.github.io/proposal-numeric-separator/#prod-DecimalDigits
-  return IsDecimalDigit(c) || c == '_';
-}
-
 inline bool IsHexDigit(uc32 c) {
   // ECMA-262, 3rd, 7.6 (p 15)
   return IsDecimalDigit(c) || IsInRange(AsciiAlphaToLower(c), 'a', 'f');
-}
-
-inline bool IsHexDigitWithSeparator(uc32 c) {
-  // https://tc39.github.io/proposal-numeric-separator/#prod-HexDigits
-  return IsHexDigit(c) || c == '_';
 }
 
 inline bool IsOctalDigit(uc32 c) {
@@ -68,19 +58,9 @@ inline bool IsOctalDigit(uc32 c) {
   return IsInRange(c, '0', '7');
 }
 
-inline bool IsOctalDigitWithSeparator(uc32 c) {
-  // https://tc39.github.io/proposal-numeric-separator/#prod-OctalDigits
-  return IsOctalDigit(c) || c == '_';
-}
-
 inline bool IsBinaryDigit(uc32 c) {
   // ECMA-262, 6th, 7.8.3
   return c == '0' || c == '1';
-}
-
-inline bool IsBinaryDigitWithSeparator(uc32 c) {
-  // https://tc39.github.io/proposal-numeric-separator/#prod-BinaryDigits
-  return IsBinaryDigit(c) || c == '_';
 }
 
 inline bool IsRegExpWord(uc16 c) {

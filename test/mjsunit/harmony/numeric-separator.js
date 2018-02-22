@@ -28,6 +28,19 @@
   const implicitOctal = 07_7_7;
   assertEquals(implicitOctal, 0o777);
 }
+
+{
+  let exeception = false;
+  try {
+    const code = `"use strict" const implicitOctal = 07_7_7`;
+    eval(code);
+  } catch(e) {
+    exeception = true;
+    assertInstanceof(e, SyntaxError);
+  }
+  assertTrue(exeception);
+}
+
 {
   const binary = 0b0_1_0_1_0;
   assertEquals(binary, 0b01010);

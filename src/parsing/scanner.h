@@ -496,6 +496,15 @@ class Scanner {
     Token::Value contextual_token;
   };
 
+  enum NumberKind {
+    DECIMAL,
+    DECIMAL_WITH_LEADING_ZERO,
+    HEX,
+    OCTAL,
+    IMPLICIT_OCTAL,
+    BINARY
+  };
+
   static const int kCharacterLookaheadBufferSize = 1;
   const int kMaxAscii = 127;
 
@@ -726,15 +735,20 @@ class Scanner {
   // Scans a possible HTML comment -- begins with '<!'.
   Token::Value ScanHtmlComment();
 
+  bool ScanDigitsWithNumericSeparators(bool (*predicate)(uc32 ch),
+                                       int start_pos);
   bool ScanDecimalDigits(int start_pos);
+  // Optimized function to scan decimal number as Smi.
+  bool ScanDecimalWithSmi(int start_pos, uint64_t* value);
+  // Numeric separator version of below function.
+  bool ScanDecimalWithSmiWithNumericSeparators(int start_pos, uint64_t* value);
   bool ScanHexDigits(int start_pos);
   bool ScanBinaryDigits(int start_pos);
   bool ScanSignedInteger(int start_pos);
   bool ScanOctalDigits(int start_pos);
-  bool ScanImplicitOctalDigits(int start_pos, bool* is_error);
-
-  bool ScanSeparator(int start_pos, bool* separator_seen);
-  bool ReportIfTrailingSeparatorFound(int start_pos, bool separator_seen);
+  bool ScanImplicitOctalDigits(int start_pos, NumberKind* kind);
+  bool ScanImplictOctalDigitsWithNumericSeparators(int start_pos,
+                                                   NumberKind* kind);
 
   Token::Value ScanNumber(bool seen_period);
   Token::Value ScanIdentifierOrKeyword();

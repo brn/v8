@@ -1165,6 +1165,8 @@ void SetParserFlags(i::PreParser* parser, i::EnumSet<ParserFlag> flags) {
       flags.Contains(kAllowHarmonyDoExpressions));
   parser->set_allow_harmony_optional_catch_binding(
       flags.Contains(kAllowHarmonyOptionalCatchBinding));
+  parser->set_allow_harmony_numeric_separator(
+      flags.Contains(kAllowHarmonyNumericSeparator));
 }
 
 void TestParserSyncWithFlags(i::Handle<i::String> source,
@@ -1495,12 +1497,14 @@ TEST(NumericSeparator) {
   const char* context_data[][2] = {
       {"", ""}, {"\"use strict\";", ""}, {nullptr, nullptr}};
   const char* statement_data[] = {
-      "1_0_0_0",     "1_0e+1", "1_0e+1_0", "0xF_F_FF", "0o7_7_7",
-      "0b0_1_0_1_0", ".3_2_1", "0.0_2_1",  "1_0.0_1",  nullptr};
+      "1_0_0_0", "1_0e+1",  "1_0e+1_0", "0xF_F_FF", "0o7_7_7", "0b0_1_0_1_0",
+      ".3_2_1",  "0.0_2_1", "1_0.0_1",  ".0_1_2",   nullptr};
 
   static const ParserFlag flags[] = {kAllowHarmonyNumericSeparator};
   RunParserSyncTest(context_data, statement_data, kSuccess, nullptr, 0, flags,
                     1);
+
+  RunParserSyncTest(context_data, statement_data, kError);
 }
 
 TEST(NumericSeparatorErrors) {
@@ -1510,13 +1514,15 @@ TEST(NumericSeparatorErrors) {
 
   const char* context_data[][2] = {
       {"", ""}, {"\"use strict\";", ""}, {nullptr, nullptr}};
-  const char* statement_data[] = {"1_0_0_0_", "1e_1",    "1e+_1",  "1_e+1",
-                                  "1__0",     "0x_1",    "0x1__1", "0x1_",
-                                  "0b_0101",  "0b11_",   "0b1__1", "0o777_",
-                                  "0o_777",   "0o7__77", nullptr};
+  const char* statement_data[] = {
+      "1_0_0_0_", "1e_1",    "1e+_1", "1_e+1",  "1__0",    "0x_1",
+      "0x1__1",   "0x1_",    "0_x1",  "0_x_1",  "0b_0101", "0b11_",
+      "0b1__1",   "0_b1",    "0_b_1", "0o777_", "0o_777",  "0o7__77",
+      "0.0_2_1_", "0.0__21", "0_.01", "0._01",  nullptr};
 
   static const ParserFlag flags[] = {kAllowHarmonyNumericSeparator};
-  RunParserSyncTest(context_data, statement_data, kError, nullptr, 0, flags, 1);
+  RunParserSyncTest(context_data, statement_data, kError, nullptr, 0, flags, 1,
+                    nullptr, 0, false, true, true);
 }
 
 TEST(NumericSeparatorImplicitOctals) {
@@ -1543,7 +1549,8 @@ TEST(NumericSeparatorImplicitOctalsErrors) {
   const char* statement_data[] = {"07_7_7_", "07__77", "0__777", nullptr};
 
   static const ParserFlag flags[] = {kAllowHarmonyNumericSeparator};
-  RunParserSyncTest(context_data, statement_data, kError, nullptr, 0, flags, 1);
+  RunParserSyncTest(context_data, statement_data, kError, nullptr, 0, flags, 1,
+                    nullptr, 0, false, true, true);
 }
 
 TEST(ErrorsEvalAndArguments) {
