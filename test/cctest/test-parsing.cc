@@ -1523,6 +1523,8 @@ TEST(NumericSeparatorErrors) {
   static const ParserFlag flags[] = {kAllowHarmonyNumericSeparator};
   RunParserSyncTest(context_data, statement_data, kError, nullptr, 0, flags, 1,
                     nullptr, 0, false, true, true);
+
+  RunParserSyncTest(context_data, statement_data, kError);
 }
 
 TEST(NumericSeparatorImplicitOctals) {
@@ -1537,6 +1539,8 @@ TEST(NumericSeparatorImplicitOctals) {
   static const ParserFlag flags[] = {kAllowHarmonyNumericSeparator};
   RunParserSyncTest(context_data, statement_data, kSuccess, nullptr, 0, flags,
                     1);
+
+  RunParserSyncTest(context_data, statement_data, kError);
 }
 
 TEST(NumericSeparatorImplicitOctalsErrors) {
@@ -1551,6 +1555,24 @@ TEST(NumericSeparatorImplicitOctalsErrors) {
   static const ParserFlag flags[] = {kAllowHarmonyNumericSeparator};
   RunParserSyncTest(context_data, statement_data, kError, nullptr, 0, flags, 1,
                     nullptr, 0, false, true, true);
+
+  RunParserSyncTest(context_data, statement_data, kError);
+}
+
+TEST(NumericSeparatorUnicodeEscapeSequencesErrors) {
+  v8::HandleScope handles(CcTest::isolate());
+  v8::Local<v8::Context> context = v8::Context::New(CcTest::isolate());
+  v8::Context::Scope context_scope(context);
+
+  const char* context_data[][2] = {
+      {"", ""}, {"'use strict'", ""}, {nullptr, nullptr}};
+  // https://github.com/tc39/proposal-numeric-separator/issues/25
+  const char* statement_data[] = {"\\u{10_FFFF}", nullptr};
+
+  static const ParserFlag flags[] = {kAllowHarmonyNumericSeparator};
+  RunParserSyncTest(context_data, statement_data, kError, nullptr, 0, flags, 1);
+
+  RunParserSyncTest(context_data, statement_data, kError);
 }
 
 TEST(ErrorsEvalAndArguments) {

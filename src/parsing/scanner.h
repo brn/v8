@@ -736,12 +736,13 @@ class Scanner {
   Token::Value ScanHtmlComment();
 
   bool ScanDigitsWithNumericSeparators(bool (*predicate)(uc32 ch),
-                                       int start_pos);
+                                       int start_pos,
+                                       bool is_check_first_digit);
   bool ScanDecimalDigits(int start_pos);
   // Optimized function to scan decimal number as Smi.
-  bool ScanDecimalWithSmi(int start_pos, uint64_t* value);
+  bool ScanDecimalAsSmi(int start_pos, uint64_t* value);
   // Numeric separator version of below function.
-  bool ScanDecimalWithSmiWithNumericSeparators(int start_pos, uint64_t* value);
+  bool ScanDecimalAsSmiWithNumericSeparators(int start_pos, uint64_t* value);
   bool ScanHexDigits(int start_pos);
   bool ScanBinaryDigits(int start_pos);
   bool ScanSignedInteger(int start_pos);

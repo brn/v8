@@ -1224,7 +1224,11 @@ Handle<String> Scanner::SourceMappingUrl(Isolate* isolate) const {
 }
 
 bool Scanner::ScanDigitsWithNumericSeparators(bool (*predicate)(uc32 ch),
-                                              int start_pos) {
+                                              int start_pos,
+                                              bool is_check_first_digit) {
+  // we must have at least one digit after 'x'/'b'/'o'
+  if (is_check_first_digit && !predicate(c0_)) return false;
+
   bool separator_seen = false;
   while (predicate(c0_) || c0_ == '_') {
     if (c0_ == '_') {
@@ -1252,7 +1256,7 @@ bool Scanner::ScanDigitsWithNumericSeparators(bool (*predicate)(uc32 ch),
 
 bool Scanner::ScanDecimalDigits(int start_pos) {
   if (allow_harmony_numeric_separator()) {
-    return ScanDigitsWithNumericSeparators(&IsDecimalDigit, start_pos);
+    return ScanDigitsWithNumericSeparators(&IsDecimalDigit, start_pos, false);
   }
   while (IsDecimalDigit(c0_)) {
     AddLiteralCharAdvance();
@@ -1260,8 +1264,8 @@ bool Scanner::ScanDecimalDigits(int start_pos) {
   return true;
 }
 
-bool Scanner::ScanDecimalWithSmiWithNumericSeparators(int start_pos,
-                                                      uint64_t* value) {
+bool Scanner::ScanDecimalAsSmiWithNumericSeparators(int start_pos,
+                                                    uint64_t* value) {
   bool separator_seen = false;
   while (IsDecimalDigit(c0_) || c0_ == '_') {
     if (c0_ == '_') {
@@ -1290,9 +1294,9 @@ bool Scanner::ScanDecimalWithSmiWithNumericSeparators(int start_pos,
   return true;
 }
 
-bool Scanner::ScanDecimalWithSmi(int start_pos, uint64_t* value) {
+bool Scanner::ScanDecimalAsSmi(int start_pos, uint64_t* value) {
   if (allow_harmony_numeric_separator()) {
-    return ScanDecimalWithSmiWithNumericSeparators(start_pos, value);
+    return ScanDecimalAsSmiWithNumericSeparators(start_pos, value);
   }
 
   while (IsDecimalDigit(c0_)) {
@@ -1305,10 +1309,8 @@ bool Scanner::ScanDecimalWithSmi(int start_pos, uint64_t* value) {
 }
 
 bool Scanner::ScanBinaryDigits(int start_pos) {
-  // we must have at least one binary digit after 'b'/'B'
-  if (!IsBinaryDigit(c0_)) return false;
   if (allow_harmony_numeric_separator()) {
-    return ScanDigitsWithNumericSeparators(&IsBinaryDigit, start_pos);
+    return ScanDigitsWithNumericSeparators(&IsBinaryDigit, start_pos, true);
   }
 
   while (IsBinaryDigit(c0_)) {
@@ -1318,10 +1320,8 @@ bool Scanner::ScanBinaryDigits(int start_pos) {
 }
 
 bool Scanner::ScanOctalDigits(int start_pos) {
-  // we must have at least one octal digit after 'o'/'O'
-  if (!IsOctalDigit(c0_)) return false;
   if (allow_harmony_numeric_separator()) {
-    return ScanDigitsWithNumericSeparators(&IsOctalDigit, start_pos);
+    return ScanDigitsWithNumericSeparators(&IsOctalDigit, start_pos, true);
   }
 
   while (IsOctalDigit(c0_)) {
@@ -1390,10 +1390,8 @@ bool Scanner::ScanImplicitOctalDigits(int start_pos,
 }
 
 bool Scanner::ScanHexDigits(int start_pos) {
-  // we must have at least one hex digit after 'x'/'X'
-  if (!IsHexDigit(c0_)) return false;
   if (allow_harmony_numeric_separator()) {
-    return ScanDigitsWithNumericSeparators(&IsHexDigit, start_pos);
+    return ScanDigitsWithNumericSeparators(&IsHexDigit, start_pos, true);
   }
 
   while (IsHexDigit(c0_)) {
@@ -1449,7 +1447,9 @@ Token::Value Scanner::ScanNumber(bool seen_period) {
         if (!ScanImplicitOctalDigits(start_pos, &kind)) {
           return Token::ILLEGAL;
         }
-        at_start = false;
+        if (kind == DECIMAL_WITH_LEADING_ZERO) {
+          at_start = false;
+        }
       } else if (c0_ == '8' || c0_ == '9') {
         kind = DECIMAL_WITH_LEADING_ZERO;
       }
@@ -1461,7 +1461,7 @@ Token::Value Scanner::ScanNumber(bool seen_period) {
       if (at_start) {
         uint64_t value = 0;
         // scan subsequent decimal digits
-        if (!ScanDecimalWithSmi(start_pos, &value)) {
+        if (!ScanDecimalAsSmi(start_pos, &value)) {
           return Token::ILLEGAL;
         }
 
@@ -1481,20 +1481,14 @@ Token::Value Scanner::ScanNumber(bool seen_period) {
         HandleLeadSurrogate();
       }
 
-      auto ok = ScanDecimalDigits(start_pos);  // optional
-      if (!ok) {
-        return Token::ILLEGAL;
-      }
+      if (!ScanDecimalDigits(start_pos)) return Token::ILLEGAL;
       if (c0_ == '.') {
         seen_period = true;
         AddLiteralCharAdvance();
         if (allow_harmony_numeric_separator() && c0_ == '_') {
           return Token::ILLEGAL;
         }
-        ok = ScanDecimalDigits(start_pos);  // optional
-        if (!ok) {
-          return Token::ILLEGAL;
-        }
+        if (!ScanDecimalDigits(start_pos)) return Token::ILLEGAL;
       }
     }
   }
