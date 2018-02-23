@@ -1313,6 +1313,11 @@ bool Scanner::ScanBinaryDigits(int start_pos) {
     return ScanDigitsWithNumericSeparators(&IsBinaryDigit, start_pos, true);
   }
 
+  // we must have at least one binary digit after 'b'/'B'
+  if (!IsBinaryDigit(c0_)) {
+    return false;
+  }
+
   while (IsBinaryDigit(c0_)) {
     AddLiteralCharAdvance();
   }
@@ -1322,6 +1327,11 @@ bool Scanner::ScanBinaryDigits(int start_pos) {
 bool Scanner::ScanOctalDigits(int start_pos) {
   if (allow_harmony_numeric_separator()) {
     return ScanDigitsWithNumericSeparators(&IsOctalDigit, start_pos, true);
+  }
+
+  // we must have at least one octal digit after 'o'/'O'
+  if (!IsOctalDigit(c0_)) {
+    return false;
   }
 
   while (IsOctalDigit(c0_)) {
@@ -1392,6 +1402,11 @@ bool Scanner::ScanImplicitOctalDigits(int start_pos,
 bool Scanner::ScanHexDigits(int start_pos) {
   if (allow_harmony_numeric_separator()) {
     return ScanDigitsWithNumericSeparators(&IsHexDigit, start_pos, true);
+  }
+
+  // we must have at least one hex digit after 'x'/'X'
+  if (!IsHexDigit(c0_)) {
+    return false;
   }
 
   while (IsHexDigit(c0_)) {
