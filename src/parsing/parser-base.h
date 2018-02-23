@@ -313,7 +313,7 @@ class ParserBase {
     return scanner()->allow_harmony_numeric_separator();
   }
   void set_allow_harmony_numeric_separator(bool allow) {
-    scanner()->allow_harmony_numeric_separator(allow);
+    scanner()->set_allow_harmony_numeric_separator(allow);
   }
 
   bool allow_harmony_private_fields() const {

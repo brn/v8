@@ -1340,7 +1340,7 @@ bool Scanner::ScanOctalDigits(int start_pos) {
   return true;
 }
 
-bool Scanner::ScanImplictOctalDigitsWithNumericSeparators(
+bool Scanner::ScanImplicitOctalDigitsWithNumericSeparators(
     int start_pos, Scanner::NumberKind* kind) {
   bool separator_seen = false;
   while (true) {
@@ -1380,7 +1380,7 @@ bool Scanner::ScanImplicitOctalDigits(int start_pos,
   *kind = IMPLICIT_OCTAL;
 
   if (allow_harmony_numeric_separator()) {
-    return ScanImplictOctalDigitsWithNumericSeparators(start_pos, kind);
+    return ScanImplicitOctalDigitsWithNumericSeparators(start_pos, kind);
   }
 
   while (true) {

@@ -369,7 +369,7 @@ class Scanner {
   bool allow_harmony_numeric_separator() const {
     return allow_harmony_numeric_separator_;
   }
-  void allow_harmony_numeric_separator(bool allow) {
+  void set_allow_harmony_numeric_separator(bool allow) {
     allow_harmony_numeric_separator_ = allow;
   }
 
@@ -741,15 +741,14 @@ class Scanner {
   bool ScanDecimalDigits(int start_pos);
   // Optimized function to scan decimal number as Smi.
   bool ScanDecimalAsSmi(int start_pos, uint64_t* value);
-  // Numeric separator version of below function.
   bool ScanDecimalAsSmiWithNumericSeparators(int start_pos, uint64_t* value);
   bool ScanHexDigits(int start_pos);
   bool ScanBinaryDigits(int start_pos);
   bool ScanSignedInteger(int start_pos);
   bool ScanOctalDigits(int start_pos);
   bool ScanImplicitOctalDigits(int start_pos, NumberKind* kind);
-  bool ScanImplictOctalDigitsWithNumericSeparators(int start_pos,
-                                                   NumberKind* kind);
+  bool ScanImplicitOctalDigitsWithNumericSeparators(int start_pos,
+                                                    NumberKind* kind);
 
   Token::Value ScanNumber(bool seen_period);
   Token::Value ScanIdentifierOrKeyword();
