@@ -30,15 +30,15 @@
 }
 
 {
-  let exeception = false;
+  let exception = false;
   try {
     const code = `"use strict" const implicitOctal = 07_7_7`;
     eval(code);
   } catch(e) {
-    exeception = true;
+    exception = true;
     assertInstanceof(e, SyntaxError);
   }
-  assertTrue(exeception);
+  assertTrue(exception);
 }
 
 {
@@ -46,7 +46,7 @@
   assertEquals(binary, 0b01010);
 }
 {
-  const leadingZeros = 09_1_3
+  const leadingZeros = 09_1_3;
   assertEquals(leadingZeros, 0913);
 }
 

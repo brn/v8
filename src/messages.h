@@ -558,9 +558,9 @@ class ErrorUtils : public AllStatic {
   T(NormalizationForm, "The normalization form should be one of %.")           \
   T(NumberFormatRange, "% argument must be between 0 and 100")                 \
   T(TrailingNumericSeparator,                                                  \
-    "Numeric separators are not allowed at the end of numeric literals.")      \
+    "Numeric separators are not allowed at the end of numeric literals")       \
   T(ContinuousNumericSeparator,                                                \
-    "Only one underscore is allowed as numeric separator.")                    \
+    "Only one underscore is allowed as numeric separator")                     \
   T(PropertyValueOutOfRange, "% value is out of range.")                       \
   T(StackOverflow, "Maximum call stack size exceeded")                         \
   T(ToPrecisionFormatRange,                                                    \

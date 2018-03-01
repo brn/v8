@@ -497,12 +497,12 @@ class Scanner {
   };
 
   enum NumberKind {
-    DECIMAL,
-    DECIMAL_WITH_LEADING_ZERO,
-    HEX,
+    BINARY,
     OCTAL,
     IMPLICIT_OCTAL,
-    BINARY
+    HEX,
+    DECIMAL,
+    DECIMAL_WITH_LEADING_ZERO
   };
 
   static const int kCharacterLookaheadBufferSize = 1;
