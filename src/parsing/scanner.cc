@@ -182,7 +182,8 @@ Scanner::Scanner(UnicodeCache* unicode_cache)
       octal_pos_(Location::invalid()),
       octal_message_(MessageTemplate::kNone),
       found_html_comment_(false),
-      allow_harmony_bigint_(false) {}
+      allow_harmony_bigint_(false),
+      allow_harmony_numeric_separator_(false) {}
 
 void Scanner::Initialize(Utf16CharacterStream* source, bool is_module) {
   DCHECK_NOT_NULL(source);
