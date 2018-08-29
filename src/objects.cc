@@ -8981,6 +8981,8 @@ V8_WARN_UNUSED_RESULT Maybe<bool> FastGetOwnValuesOrEntries(
     count++;
   }
   DescriptorArray::SetEnumCache(descriptors, isolate, enum_keys_store, indices);
+  if (map->OnlyHasSimpleProperties())
+    map->SetEnumLength(map->NumberOfEnumerableProperties());
   DCHECK_LE(count, values_or_entries->length());
   *result = FixedArray::ShrinkOrEmpty(isolate, values_or_entries, count);
   return Just(true);

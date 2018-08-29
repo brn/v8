@@ -260,7 +260,6 @@ void ObjectEntriesValuesBuiltinsAssembler::GotoIfMapHasSlowProperties(
   GotoIf(IsStringWrapperElementsKind(map), if_slow);
   GotoIf(IsSpecialReceiverMap(map), if_slow);
   GotoIf(HasHiddenPrototype(map), if_slow);
-  Print(map);
   GotoIf(IsDictionaryMap(map), if_slow);
 }
 
