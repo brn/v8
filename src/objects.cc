@@ -9078,6 +9078,14 @@ V8_WARN_UNUSED_RESULT Maybe<bool> FastGetOwnValuesOrEntries(
   }
 
   bool stable = object->map() == *map;
+  bool fields_only = true;
+  Handle<FixedArray> enum_cache_keys =
+      isolate->factory()->NewFixedArray(number_of_own_descriptors);
+  Handle<FixedArray> enum_cache_indices =
+      isolate->factory()->NewFixedArray(number_of_own_descriptors);
+  // We use enum cache specific counter.
+  // Because count variables may be incremented by above CollectValuesOrEntries.
+  int enum_cache_count = 0;
 
   for (int index = 0; index < number_of_own_descriptors; index++) {
     Handle<Name> next_key(descriptors->GetKey(index), isolate);
@@ -9091,9 +9099,11 @@ V8_WARN_UNUSED_RESULT Maybe<bool> FastGetOwnValuesOrEntries(
       if (details.kind() == kData) {
         if (details.location() == kDescriptor) {
           prop_value = handle(descriptors->GetStrongValue(index), isolate);
+          fields_only = false;
         } else {
-          Representation representation = details.representation();
+          DCHECK_EQ(details.location(), kField);
           FieldIndex field_index = FieldIndex::ForDescriptor(*map, index);
+          Representation representation = details.representation();
           prop_value =
               JSObject::FastPropertyAt(object, representation, field_index);
         }
@@ -9102,6 +9112,7 @@ V8_WARN_UNUSED_RESULT Maybe<bool> FastGetOwnValuesOrEntries(
             isolate, prop_value,
             JSReceiver::GetProperty(isolate, object, next_key),
             Nothing<bool>());
+        fields_only = false;
         stable = object->map() == *map;
       }
     } else {
@@ -9115,7 +9126,11 @@ V8_WARN_UNUSED_RESULT Maybe<bool> FastGetOwnValuesOrEntries(
       if (!it.IsEnumerable()) continue;
       ASSIGN_RETURN_ON_EXCEPTION_VALUE(
           isolate, prop_value, Object::GetProperty(&it), Nothing<bool>());
+      fields_only = it.location() == kField;
     }
+
+    enum_cache_keys->set(enum_cache_count, *next_key);
+    enum_cache_count++;
 
     if (get_entries) {
       prop_value = MakeEntryPair(isolate, next_key, prop_value);
@@ -9123,6 +9138,43 @@ V8_WARN_UNUSED_RESULT Maybe<bool> FastGetOwnValuesOrEntries(
 
     values_or_entries->set(count, *prop_value);
     count++;
+  }
+
+  // If map is stable and all properties are exists in object field, create
+  // indices.
+  if (stable && fields_only) {
+    int index = 0;
+    for (int i = 0; i < number_of_own_descriptors; i++) {
+      DisallowHeapAllocation no_gc;
+      PropertyDetails details = descriptors->GetDetails(i);
+      if (details.IsDontEnum()) continue;
+      Object key = descriptors->GetKey(i);
+      if (key->IsSymbol()) continue;
+      DCHECK_EQ(kData, details.kind());
+      DCHECK_EQ(kField, details.location());
+      FieldIndex field_index = FieldIndex::ForDescriptor(*map, i);
+      enum_cache_indices->set(index,
+                              Smi::FromInt(field_index.GetLoadByFieldIndex()));
+      index++;
+    }
+    DCHECK_EQ(index, enum_cache_count);
+  }
+
+  // If DescriptorArray was not created,
+  // map default DescriptorArray will be root object that allocated in RO_SPACE.
+  // So, we check DescriptorArray is already created or not.
+  if (*descriptors != *(isolate->factory()->empty_descriptor_array()) &&
+      enum_cache_count > 0) {
+    Handle<FixedArray> shrinked_key =
+        FixedArray::ShrinkOrEmpty(isolate, enum_cache_keys, enum_cache_count);
+    Handle<FixedArray> shrinked_indices = FixedArray::ShrinkOrEmpty(
+        isolate, enum_cache_indices, enum_cache_count);
+    DescriptorArray::InitializeOrChangeEnumCache(
+        descriptors, isolate, shrinked_key, shrinked_indices);
+  }
+
+  if (map->OnlyHasSimpleProperties()) {
+    map->SetEnumLength(map->NumberOfEnumerableProperties());
   }
 
   DCHECK_LE(count, values_or_entries->length());
@@ -9184,6 +9236,13 @@ MaybeHandle<FixedArray> GetOwnValuesOrEntries(Isolate* isolate,
     values_or_entries->set(length, *value);
     length++;
   }
+
+  // Transform dictionary_map to fast object map.
+  if (object->IsJSObject() && !object->IsJSGlobalObject()) {
+    JSObject::MigrateSlowToFast(Handle<JSObject>::cast(object), 0,
+                                "GetOwnValuesOrEntries");
+  }
+
   DCHECK_LE(length, values_or_entries->length());
   return FixedArray::ShrinkOrEmpty(isolate, values_or_entries, length);
 }
