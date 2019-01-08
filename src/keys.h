@@ -44,6 +44,15 @@ class KeyAccumulator final {
       GetKeysConversion keys_conversion = GetKeysConversion::kKeepNumbers,
       bool is_for_in = false, bool skip_indices = false);
 
+  // Set enum cache to specified map descriptor.
+  // Before pass true to initialize_indices_cache, you must satisfy following
+  // conditions.
+  // 1. Descriptor only has field property.
+  // 2. All enumerable descriptors kind must be kData.
+  static void SetEnumCache(Isolate* isolate, Handle<Map> map,
+                           Handle<FixedArray> keys, int enum_length,
+                           bool initialize_indices_cache);
+
   Handle<FixedArray> GetKeys(
       GetKeysConversion convert = GetKeysConversion::kKeepNumbers);
   Maybe<bool> CollectKeys(Handle<JSReceiver> receiver,

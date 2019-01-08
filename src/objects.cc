@@ -9068,24 +9068,22 @@ V8_WARN_UNUSED_RESULT Maybe<bool> FastGetOwnValuesOrEntries(
       object->GetElementsAccessor()->GetCapacity(*object, object->elements());
   Handle<FixedArray> values_or_entries = isolate->factory()->NewFixedArray(
       number_of_own_descriptors + number_of_own_elements);
-  int count = 0;
+  int entry_count = 0;
 
   if (object->elements() != ReadOnlyRoots(isolate).empty_fixed_array()) {
     MAYBE_RETURN(object->GetElementsAccessor()->CollectValuesOrEntries(
-                     isolate, object, values_or_entries, get_entries, &count,
-                     ENUMERABLE_STRINGS),
+                     isolate, object, values_or_entries, get_entries,
+                     &entry_count, ENUMERABLE_STRINGS),
                  Nothing<bool>());
   }
 
   bool stable = object->map() == *map;
   bool fields_only = true;
-  Handle<FixedArray> enum_cache_keys =
-      isolate->factory()->NewFixedArray(number_of_own_descriptors);
-  Handle<FixedArray> enum_cache_indices =
-      isolate->factory()->NewFixedArray(number_of_own_descriptors);
   // We use enum cache specific counter.
   // Because count variables may be incremented by above CollectValuesOrEntries.
   int enum_cache_count = 0;
+  Handle<FixedArray> enum_cache_keys =
+      isolate->factory()->NewFixedArray(number_of_own_descriptors);
 
   for (int index = 0; index < number_of_own_descriptors; index++) {
     Handle<Name> next_key(descriptors->GetKey(index), isolate);
@@ -9136,49 +9134,20 @@ V8_WARN_UNUSED_RESULT Maybe<bool> FastGetOwnValuesOrEntries(
       prop_value = MakeEntryPair(isolate, next_key, prop_value);
     }
 
-    values_or_entries->set(count, *prop_value);
-    count++;
+    values_or_entries->set(entry_count, *prop_value);
+    entry_count++;
   }
 
   // If map is stable and all properties are exists in object field, create
   // indices.
-  if (stable && fields_only) {
-    int index = 0;
-    for (int i = 0; i < number_of_own_descriptors; i++) {
-      DisallowHeapAllocation no_gc;
-      PropertyDetails details = descriptors->GetDetails(i);
-      if (details.IsDontEnum()) continue;
-      Object key = descriptors->GetKey(i);
-      if (key->IsSymbol()) continue;
-      DCHECK_EQ(kData, details.kind());
-      DCHECK_EQ(kField, details.location());
-      FieldIndex field_index = FieldIndex::ForDescriptor(*map, i);
-      enum_cache_indices->set(index,
-                              Smi::FromInt(field_index.GetLoadByFieldIndex()));
-      index++;
-    }
-    DCHECK_EQ(index, enum_cache_count);
-  }
+  bool initialize_enum_cache_indices = stable && fields_only;
+  KeyAccumulator::SetEnumCache(
+      isolate, map,
+      FixedArray::ShrinkOrEmpty(isolate, enum_cache_keys, enum_cache_count),
+      enum_cache_count, initialize_enum_cache_indices);
 
-  // If DescriptorArray was not created,
-  // map default DescriptorArray will be root object that allocated in RO_SPACE.
-  // So, we check DescriptorArray is already created or not.
-  if (*descriptors != *(isolate->factory()->empty_descriptor_array()) &&
-      enum_cache_count > 0) {
-    Handle<FixedArray> shrinked_key =
-        FixedArray::ShrinkOrEmpty(isolate, enum_cache_keys, enum_cache_count);
-    Handle<FixedArray> shrinked_indices = FixedArray::ShrinkOrEmpty(
-        isolate, enum_cache_indices, enum_cache_count);
-    DescriptorArray::InitializeOrChangeEnumCache(
-        descriptors, isolate, shrinked_key, shrinked_indices);
-  }
-
-  if (map->OnlyHasSimpleProperties()) {
-    map->SetEnumLength(map->NumberOfEnumerableProperties());
-  }
-
-  DCHECK_LE(count, values_or_entries->length());
-  *result = FixedArray::ShrinkOrEmpty(isolate, values_or_entries, count);
+  DCHECK_LE(entry_count, values_or_entries->length());
+  *result = FixedArray::ShrinkOrEmpty(isolate, values_or_entries, entry_count);
   return Just(true);
 }
 

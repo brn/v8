@@ -43,6 +43,45 @@ MaybeHandle<FixedArray> KeyAccumulator::GetKeys(
   return accumulator.GetKeys(keys_conversion);
 }
 
+// static
+void KeyAccumulator::SetEnumCache(Isolate* isolate, Handle<Map> map,
+                                  Handle<FixedArray> keys, int enum_length,
+                                  bool initialize_inidices_cache) {
+  Handle<DescriptorArray> descriptors(map->instance_descriptors(), isolate);
+  Handle<FixedArray> enum_cache_indices =
+      isolate->factory()->empty_fixed_array();
+
+  if (initialize_inidices_cache) {
+    enum_cache_indices = isolate->factory()->NewFixedArray(enum_length);
+    int index = 0;
+    for (int i = 0; i < map->NumberOfOwnDescriptors(); i++) {
+      DisallowHeapAllocation no_gc;
+      PropertyDetails details = descriptors->GetDetails(i);
+      if (details.IsDontEnum()) continue;
+      Object key = descriptors->GetKey(i);
+      if (key->IsSymbol()) continue;
+      DCHECK_EQ(kData, details.kind());
+      DCHECK_EQ(kField, details.location());
+      FieldIndex field_index = FieldIndex::ForDescriptor(*map, i);
+      enum_cache_indices->set(index,
+                              Smi::FromInt(field_index.GetLoadByFieldIndex()));
+      index++;
+    }
+    DCHECK_EQ(enum_cache_indices->length(), keys->length());
+  }
+
+  // If DescriptorArray was not created,
+  // map default DescriptorArray will be root object that allocated in RO_SPACE.
+  // So, we check DescriptorArray is already created or not.
+  if (*descriptors != *(isolate->factory()->empty_descriptor_array())) {
+    DescriptorArray::InitializeOrChangeEnumCache(descriptors, isolate, keys,
+                                                 enum_cache_indices);
+    if (map->OnlyHasSimpleProperties()) {
+      map->SetEnumLength(map->NumberOfEnumerableProperties());
+    }
+  }
+}
+
 Handle<FixedArray> KeyAccumulator::GetKeys(GetKeysConversion convert) {
   if (keys_.is_null()) {
     return isolate_->factory()->empty_fixed_array();
@@ -328,29 +367,7 @@ Handle<FixedArray> GetFastEnumPropertyKeys(Isolate* isolate,
   }
   DCHECK_EQ(index, keys->length());
 
-  // Optionally also create the indices array.
-  Handle<FixedArray> indices = isolate->factory()->empty_fixed_array();
-  if (fields_only) {
-    indices = isolate->factory()->NewFixedArray(enum_length);
-    index = 0;
-    for (int i = 0; i < nod; i++) {
-      DisallowHeapAllocation no_gc;
-      PropertyDetails details = descriptors->GetDetails(i);
-      if (details.IsDontEnum()) continue;
-      Object key = descriptors->GetKey(i);
-      if (key->IsSymbol()) continue;
-      DCHECK_EQ(kData, details.kind());
-      DCHECK_EQ(kField, details.location());
-      FieldIndex field_index = FieldIndex::ForDescriptor(*map, i);
-      indices->set(index, Smi::FromInt(field_index.GetLoadByFieldIndex()));
-      index++;
-    }
-    DCHECK_EQ(index, indices->length());
-  }
-
-  DescriptorArray::InitializeOrChangeEnumCache(descriptors, isolate, keys,
-                                               indices);
-  if (map->OnlyHasSimpleProperties()) map->SetEnumLength(enum_length);
+  KeyAccumulator::SetEnumCache(isolate, map, keys, enum_length, fields_only);
 
   return keys;
 }

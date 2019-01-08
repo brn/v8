@@ -73,3 +73,43 @@ function BasicMegamorphicTearDown() {
   object = result = expected = undefined;
   return true;
 }
+
+// ----------------------------------------------------------------------------
+
+new BenchmarkSuite('EntriesEnumCache', [1000], [
+  new Benchmark('BasicEnumCache', false, false, 0, BasicEnumCache,
+                BasicEnumCacheSetup, BasicEnumCacheTearDown)
+]);
+
+function BasicEnumCache() {
+  for (let i = 0; i < 100; i++) {
+    result.push(Object.entries(object));
+  }
+}
+
+
+function BasicEnumCacheSetup() {
+  // Create 1k objects with different maps.
+  object = Array(100).fill(1).reduce((obj, cur, i) => {
+    obj['property-' + i] = i;
+    return obj;
+  }, {});
+  expected = [];
+  result = [];
+  for (let i = 0; i < 100; i++) {
+    const entries = [];
+    for (let j = 0; j < 100; j++) {
+      entries.push([`property-${j}`, j]);
+    }
+    expected.push(entries);
+  }
+}
+
+
+function BasicEnumCacheTearDown() {
+  if (JSON.stringify(expected) !== JSON.stringify(result)) {
+    throw new Error("FAILURE");
+  }
+  object = result = expected = undefined;
+  return true;
+}
