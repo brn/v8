@@ -83,7 +83,7 @@ new BenchmarkSuite('EntriesEnumCache', [1000], [
 
 function BasicEnumCache() {
   for (let i = 0; i < 100; i++) {
-    result.push(Object.entries(object));
+    result[i] = Object.entries(object);
   }
 }
 
@@ -108,6 +108,8 @@ function BasicEnumCacheSetup() {
 
 function BasicEnumCacheTearDown() {
   if (JSON.stringify(expected) !== JSON.stringify(result)) {
+    print(result.length);
+    print(expected.length);
     throw new Error("FAILURE");
   }
   object = result = expected = undefined;
