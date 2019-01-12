@@ -47,6 +47,8 @@ MaybeHandle<FixedArray> KeyAccumulator::GetKeys(
 void KeyAccumulator::SetEnumCache(Isolate* isolate, Handle<Map> map,
                                   Handle<FixedArray> keys, int enum_length,
                                   bool initialize_inidices_cache) {
+  DCHECK(map->IsJSObjectMap());
+  DCHECK(!map->is_dictionary_map());
   Handle<DescriptorArray> descriptors(map->instance_descriptors(), isolate);
   Handle<FixedArray> enum_cache_indices =
       isolate->factory()->empty_fixed_array();
@@ -70,15 +72,10 @@ void KeyAccumulator::SetEnumCache(Isolate* isolate, Handle<Map> map,
     DCHECK_EQ(enum_cache_indices->length(), keys->length());
   }
 
-  // If DescriptorArray was not created,
-  // map default DescriptorArray will be root object that allocated in RO_SPACE.
-  // So, we check DescriptorArray is already created or not.
-  if (*descriptors != *(isolate->factory()->empty_descriptor_array())) {
-    DescriptorArray::InitializeOrChangeEnumCache(descriptors, isolate, keys,
-                                                 enum_cache_indices);
-    if (map->OnlyHasSimpleProperties()) {
-      map->SetEnumLength(map->NumberOfEnumerableProperties());
-    }
+  DescriptorArray::InitializeOrChangeEnumCache(descriptors, isolate, keys,
+                                               enum_cache_indices);
+  if (map->OnlyHasSimpleProperties()) {
+    map->SetEnumLength(map->NumberOfEnumerableProperties());
   }
 }
 
