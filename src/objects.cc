@@ -9206,12 +9206,6 @@ MaybeHandle<FixedArray> GetOwnValuesOrEntries(Isolate* isolate,
     length++;
   }
 
-  // Transform dictionary_map to fast object map.
-  if (object->IsJSObject() && !object->IsJSGlobalObject()) {
-    JSObject::MigrateSlowToFast(Handle<JSObject>::cast(object), 0,
-                                "GetOwnValuesOrEntries");
-  }
-
   DCHECK_LE(length, values_or_entries->length());
   return FixedArray::ShrinkOrEmpty(isolate, values_or_entries, length);
 }
