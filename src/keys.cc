@@ -46,14 +46,25 @@ MaybeHandle<FixedArray> KeyAccumulator::GetKeys(
 // static
 void KeyAccumulator::SetEnumCache(Isolate* isolate, Handle<Map> map,
                                   Handle<FixedArray> keys, int enum_length,
-                                  bool initialize_inidices_cache) {
+                                  bool initialize_indices_cache) {
+  if (enum_length == 0) {
+    return;
+  }
+
   DCHECK(map->IsJSObjectMap());
   DCHECK(!map->is_dictionary_map());
   Handle<DescriptorArray> descriptors(map->instance_descriptors(), isolate);
+
+  if (isolate->heap()->InReadOnlySpace(*descriptors)) {
+    descriptors = isolate->factory()->NewDescriptorArray(enum_length);
+    map->SetInstanceDescriptors(isolate, *descriptors,
+                                map->NumberOfOwnDescriptors());
+  }
+  DCHECK(!isolate->heap()->InReadOnlySpace(map->instance_descriptors()));
   Handle<FixedArray> enum_cache_indices =
       isolate->factory()->empty_fixed_array();
 
-  if (initialize_inidices_cache) {
+  if (initialize_indices_cache) {
     enum_cache_indices = isolate->factory()->NewFixedArray(enum_length);
     int index = 0;
     for (int i = 0; i < map->NumberOfOwnDescriptors(); i++) {
