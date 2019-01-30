@@ -56,7 +56,9 @@ void KeyAccumulator::SetEnumCache(Isolate* isolate, Handle<Map> map,
   Handle<DescriptorArray> descriptors(map->instance_descriptors(), isolate);
 
   if (isolate->heap()->InReadOnlySpace(*descriptors)) {
-    descriptors = isolate->factory()->NewDescriptorArray(enum_length);
+    descriptors = isolate->factory()->NewDescriptorArray(
+        descriptors->number_of_descriptors(),
+        descriptors->number_of_slack_descriptors());
     map->SetInstanceDescriptors(isolate, *descriptors,
                                 map->NumberOfOwnDescriptors());
   }
